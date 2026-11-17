@@ -17,6 +17,11 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.2', date: '2026-11-17', items: [
+    '取消高考词频 Rⁿ 小标（识别不准且对背词意义不大）',
+    '词库页排版压紧：字号缩小、间距收紧，一页显示更多单词',
+    '表头精简：搜索框与统计合并一行，移除使用提示条',
+  ]},
   { v: '2.1.1', date: '2026-11-17', items: [
     '移除词卡上的编辑笔按钮，统一用长按/右键编辑，界面更简洁',
   ]},
@@ -1008,7 +1013,7 @@ async function refreshWords() {
   } else {
     if (!cfg.url || !cfg.key) { allWords = []; return; }
     // 嵌套查询：vw_words 带出 vw_senses(再带 vw_examples) 与 vw_notes
-    const select = 'id,headword,phonetic,level_tag,page_no,partial,inline_def,identity_tag,freq_level,derived_from,parent_word_id,tags,vw_senses(id,pos,sense_no,sense_freq,countability,usage_label,chinese_def,english_def,antonym,vw_examples(id,kind,parent_phrase,usage_label,en,zh,gloss,source)),vw_notes(id,note_type,title,content)';
+    const select = 'id,headword,phonetic,level_tag,page_no,partial,inline_def,identity_tag,derived_from,parent_word_id,tags,vw_senses(id,pos,sense_no,sense_freq,countability,usage_label,chinese_def,english_def,antonym,vw_examples(id,kind,parent_phrase,usage_label,en,zh,gloss,source)),vw_notes(id,note_type,title,content)';
     const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_words?book_id=eq.${encodeURIComponent(cfg.book)}&select=${encodeURIComponent(select)}&order=id`, {
       headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` }
     }, { timeout: 20000, retries: 1, label: '加载词库' });
@@ -1074,8 +1079,11 @@ function resetWordList() {
   const host = document.getElementById('wordList');
   host.innerHTML = '';
   const q = (document.getElementById('searchInput').value || '').trim();
-  document.getElementById('listSummary').textContent =
-    `共 ${filteredWords.length} 个单词${q || activeTag !== '__all__' ? '（已筛选）' : ''}`;
+  const summary = document.getElementById('listSummary');
+  const isFiltering = !!(q || activeTag !== '__all__');
+  summary.innerHTML = isFiltering
+    ? `搜索到 <b>${filteredWords.length}</b> / 共 ${allWords.length} 词`
+    : `共 <b>${allWords.length}</b> 词`;
   const sentinel = document.getElementById('scrollSentinel');
   if (!filteredWords.length) {
     sentinel.classList.add('hidden');
@@ -1192,10 +1200,6 @@ function wordCardHtml(w, i) {
   if (w.identity_tag && IDENTITY[w.identity_tag]) {
     identityTag = `<span class="tag tag-identity id-${esc(w.identity_tag)}" title="${IDENTITY[w.identity_tag]}">${esc(w.identity_tag)}</span>`;
   }
-  // 词频 Rⁿ
-  const freq = Number(w.freq_level || 0);
-  const freqLevelTag = freq >= 1 && freq <= 5
-    ? `<span class="tag tag-freqlevel" title="高考词频级别 R${freq}">R${freq}</span>` : '';
   // 派生词来源
   const derivedTag = w.derived_from
     ? `<span class="tag tag-derived" title="派生自 ${esc(w.derived_from)}">派生自 ${esc(w.derived_from)}</span>` : '';
@@ -1222,7 +1226,7 @@ function wordCardHtml(w, i) {
       <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
       <span class="word-name">${esc(w.headword)}</span>
       <span class="word-ph">${esc(w.phonetic || '')}</span>
-      ${studyTags}${identityTag}${freqLevelTag}${derivedTag}${level}${page}${partialTag}
+      ${studyTags}${identityTag}${derivedTag}${level}${page}${partialTag}
       <span class="word-def">${esc(w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '')}</span>
     </div>
     <div class="word-body">
