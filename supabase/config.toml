@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.detect-page]
 verify_jwt = false
+
+[functions.job-worker]
+verify_jwt = false

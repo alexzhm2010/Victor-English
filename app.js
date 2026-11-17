@@ -28,6 +28,12 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.16.0', date: '2026-11-17', items: [
+    '云端任务队列：提交后浏览器可随时关闭/退后台，入库改由云端自动执行，回来随时看结果，不再依赖页面开着',
+    '执行清单并入「记录」页：每个任务显示状态、进度条、每页识别词数与错误，逐页可展开核对，一目了然',
+    '验收门禁：任务跑完停在「待验收」，点「确认验收」才归档；没验收的任务一直留在清单里，不会再出现起了不管、结果不明',
+    '失败页可单独重试；任务按同步码隔离，换设备填同一个码就能看到同一批任务与结果',
+  ]},
   { v: '2.15.0', date: '2026-11-17', items: [
     '恢复跨页握手池：修复清单对账改造后，跨页词被拆成两条的问题（如 access 在 P4/P5、accompany 在 P5/P6 各存一份）',
     '提示词强化：页尾词即使看起来完整也标 partial，页首延续词标 fragment_side，且不受"checkList 数量相等"铁律覆盖',
@@ -349,7 +355,7 @@ function switchPage(name) {
     b.classList.toggle('active', b.dataset.page === name));
   updateAzVisibility();
   if (name === 'words') resetWordList();
-  if (name === 'records') loadRecords();
+  if (name === 'records') { loadRecords(); loadJobs(); }
   saveUiState();
 }
 
@@ -1338,25 +1344,68 @@ async function startBatchScan() {
  */
 async function autoRunAll() {
   if (batchRunning || !batchQueue.length) return;
+  // 演示模式：仍走本地串行（无云端任务队列）
+  if (cfg.demo) { return autoRunAllLocal(); }
+  if (!sync || !sync.code) { toast('请先设置同步码'); openSyncGate(true); return; }
   batchRunning = true;
   renderBatch();
+  const total = batchQueue.length;
   try {
-    const { okCount, total } = await detectAllPages();
-    if (okCount === 0) {
-      setProgress(false);
-      toast('未能从图片识别出页码，请在缩略图上手动填写页码后重试');
-      return;
+    // 阶段①：逐张上传图片到 Storage（Blob 只在浏览器，必须前端做；几秒即完成）
+    const pages = [];
+    for (let i = 0; i < total; i++) {
+      const item = batchQueue[i];
+      setProgress(true, Math.round((i / total) * 60), `上传图片 ${i + 1}/${total}…`);
+      // 已上传过的复用，避免重复上传
+      if (!item.imageUrl) {
+        const up = await uploadOne(item);
+        item.imagePath = up.path;
+        item.imageUrl = up.imageUrl;
+      }
+      pages.push({ image_url: item.imageUrl, image_path: item.imagePath });
     }
-    setProgress(true, 100, `页码识别完成 ${okCount}/${total}，开始按页码顺序扫描入库…`);
-    const { total: scanned, failed, summary, skippedRecorded } = await scanAllPages();
-    finishScanUI(scanned, failed, summary, total - okCount, skippedRecorded);
+    // 阶段②：把图片清单交给云端，创建任务。之后页面可随时关闭，云端自动执行。
+    setProgress(true, 85, '提交云端任务…');
+    const r = await fetchWithRetry(`${cfg.url}/functions/v1/job-worker`, {
+      method: 'POST',
+      headers: { ...SYNC_HEADERS(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create', sync_code: sync.code, book_id: cfg.book, pages,
+      }),
+    }, { timeout: 30000, retries: 2, label: '提交云端任务' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || ('提交失败 HTTP ' + r.status));
+    setProgress(true, 100, '任务已提交');
+    setTimeout(() => setProgress(false), 900);
+
+    // 提交成功：清空本地队列（任务已在云端），跳到记录页看执行清单
+    batchQueue = [];
+    renderBatch();
+    toast(d.duplicated ? '这批图片已提交过，已带你查看任务' : `任务已提交（${total} 页），云端自动执行中，可关闭页面`);
+    switchPage('records');
+    loadJobs(true);
   } catch (e) {
     setProgress(false);
-    toast('自动扫描异常：' + e.message);
+    toast('提交任务失败：' + e.message);
   } finally {
     batchRunning = false;
     renderBatch();
   }
+}
+
+// demo 模式的原本地串行流程（无云端队列）
+async function autoRunAllLocal() {
+  if (batchRunning || !batchQueue.length) return;
+  batchRunning = true;
+  renderBatch();
+  try {
+    const { okCount, total } = await detectAllPages();
+    if (okCount === 0) { setProgress(false); toast('未能从图片识别出页码'); return; }
+    setProgress(true, 100, `页码识别完成 ${okCount}/${total}，开始解析…`);
+    const { total: scanned, failed, summary, skippedRecorded } = await scanAllPages();
+    finishScanUI(scanned, failed, summary, total - okCount, skippedRecorded);
+  } catch (e) { setProgress(false); toast('自动扫描异常：' + e.message); }
+  finally { batchRunning = false; renderBatch(); }
 }
 
 /* ---- 单页全流程：只处理这一页（上传→识别页码→解析入库），随时可单独启动/重试 ----
@@ -2495,6 +2544,176 @@ let recordPage = 1;             // 当前分页
 let recordFilterPage = null;    // 页码过滤（null=全部）
 let recordRawCache = {};        // batch id -> words[]
 const expandedRecords = new Set();
+
+/* ---- 云端任务执行清单（v2.16）---- */
+let jobRows = [];               // 任务单列表
+let jobPages = {};              // job_id -> 明细页数组
+let jobTab = 'active';          // active | accepted
+let jobPollTimer = null;        // 有进行中任务时的轮询定时器
+const expandedJobs = new Set();
+
+/* ---------------- 云端任务执行清单（v2.16）---------------- */
+function jobStatusMeta(st) {
+  switch (st) {
+    case 'queued':   return { cls: 'queued',   txt: '排队中' };
+    case 'running':  return { cls: 'running',  txt: '执行中' };
+    case 'done':     return { cls: 'done',     txt: '待验收' };
+    case 'accepted': return { cls: 'accepted', txt: '已验收' };
+    default:         return { cls: 'error',    txt: st || '未知' };
+  }
+}
+function pageStatusMeta(st) {
+  switch (st) {
+    case 'pending': return { cls: 'pending', txt: '排队' };
+    case 'running': return { cls: 'running', txt: '解析中' };
+    case 'done':    return { cls: 'done',    txt: '完成' };
+    case 'error':   return { cls: 'error',   txt: '失败' };
+    case 'skipped': return { cls: 'pending', txt: '跳过' };
+    default:        return { cls: 'pending', txt: st || '—' };
+  }
+}
+
+function switchJobTab(tab) {
+  jobTab = tab;
+  document.querySelectorAll('.job-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  renderJobs();
+}
+
+async function loadJobs(silent) {
+  const host = document.getElementById('jobList');
+  if (!host) return;
+  if (cfg.demo || !sync || !sync.code) {
+    host.innerHTML = '<div class="job-empty">在线模式 + 同步码下可查看云端任务</div>';
+    return;
+  }
+  if (!silent) host.innerHTML = '<div class="job-empty">加载任务清单…</div>';
+  try {
+    const codeQ = encodeURIComponent(sync.code);
+    const stFilter = jobTab === 'accepted'
+      ? '&status=eq.accepted'
+      : '&status=neq.accepted';
+    const url = `${cfg.url}/rest/v1/vw_scan_jobs?sync_code=eq.${codeQ}${stFilter}`
+      + `&select=id,job_no,book_id,status,total_pages,done_pages,failed_pages,words_found,created_at,finished_at,accepted_at,error_msg`
+      + `&order=created_at.desc&limit=60`;
+    const r = await fetchWithRetry(url, { headers: SYNC_HEADERS() }, { timeout: 20000, retries: 1, label: '加载任务清单' });
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
+    jobRows = await r.json();
+    // 拉每个任务的明细页
+    jobPages = {};
+    await Promise.all(jobRows.map(async j => {
+      try {
+        const pu = `${cfg.url}/rest/v1/vw_scan_job_pages?job_id=eq.${j.id}`
+          + `&select=id,seq,page_no,status,words_found,senses_found,api_calls,error_msg,finished_at`
+          + `&order=seq.asc`;
+        const pr = await fetchWithRetry(pu, { headers: SYNC_HEADERS() }, { timeout: 20000, retries: 1, label: '加载任务明细' });
+        jobPages[j.id] = pr.ok ? await pr.json() : [];
+      } catch (e) { jobPages[j.id] = []; }
+    }));
+    renderJobs();
+    // 有进行中任务 → 自动轮询刷新（关掉页面也没关系，云端照跑；开着就实时看到进度）
+    const busy = jobRows.some(j => j.status === 'running' || j.status === 'queued');
+    if (busy) {
+      if (!jobPollTimer) jobPollTimer = setInterval(() => {
+        if (document.getElementById('page-records')?.classList.contains('active')) loadJobs(true);
+        else { clearInterval(jobPollTimer); jobPollTimer = null; }
+      }, 8000);
+    } else if (jobPollTimer) { clearInterval(jobPollTimer); jobPollTimer = null; }
+  } catch (e) {
+    host.innerHTML = `<div class="job-empty">任务清单加载失败：${esc(e.message)} <button class="btn btn-ghost btn-sm" onclick="loadJobs()">重试</button></div>`;
+  }
+}
+
+function renderJobs() {
+  const host = document.getElementById('jobList');
+  if (!host) return;
+  if (!jobRows.length) {
+    host.innerHTML = `<div class="job-empty">${jobTab === 'accepted' ? '还没有已验收的任务' : '还没有任务。到「扫描」页选图提交后，任务会在这里显示。'}</div>`;
+    return;
+  }
+  host.innerHTML = jobRows.map(j => {
+    const meta = jobStatusMeta(j.status);
+    const total = Number(j.total_pages) || 0;
+    const done = Number(j.done_pages) || 0;
+    const failed = Number(j.failed_pages) || 0;
+    const doneAll = done + failed;
+    const pct = total ? Math.round(doneAll / total * 100) : 0;
+    const open = expandedJobs.has(j.id) ? ' open' : '';
+    const time = fmtRecTime(j.created_at);
+    const pages = jobPages[j.id] || [];
+    const canAccept = j.status === 'done';
+    const detail = pages.map(p => {
+      const pm = pageStatusMeta(p.status);
+      const pg = p.page_no > 0 ? 'P' + String(p.page_no).padStart(3, '0') : '—';
+      let info = '';
+      if (p.status === 'done') info = `${p.words_found || 0} 词 · ${p.senses_found || 0} 义项${p.api_calls ? ' · ' + p.api_calls + ' 次识别' : ''}`;
+      else if (p.status === 'error') info = esc(String(p.error_msg || '识别失败').slice(0, 40));
+      else if (p.status === 'running') info = '云端解析中…';
+      else info = '等待云端执行';
+      const retry = p.status === 'error'
+        ? `<button class="job-retry" onclick="event.stopPropagation();retryJobPage(${p.id})">重试</button>` : '';
+      return `<div class="job-page">
+        <span class="job-pg-no">${pg}</span>
+        <span class="job-pg-st ${pm.cls}">${pm.txt}</span>
+        <span class="job-pg-info" title="${esc(String(p.error_msg || info))}">${info}</span>
+        ${retry}
+      </div>`;
+    }).join('');
+    return `<div class="job-card${open}" id="job-${j.id}">
+      <div class="job-card-head" onclick="toggleJob(${j.id})">
+        <span class="job-badge ${meta.cls}">${meta.txt}</span>
+        <div class="job-meta">
+          <div class="job-no">${esc(j.job_no || '')} · ${time}</div>
+          <div class="job-title">${total} 页 · 已入库 ${j.words_found || 0} 词${failed ? ` · ${failed} 页失败` : ''}</div>
+          <div class="job-prog"><i style="width:${pct}%"></i></div>
+        </div>
+        ${canAccept ? `<button class="job-accept" onclick="event.stopPropagation();acceptJob(${j.id})">确认验收</button>` : ''}
+        <span class="rec-arrow">›</span>
+      </div>
+      <div class="job-detail">
+        <div class="rec-words-hd">逐页执行结果（每页识别详情）</div>
+        ${detail || '<div class="job-empty">暂无明细</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleJob(id) {
+  if (expandedJobs.has(id)) expandedJobs.delete(id);
+  else expandedJobs.add(id);
+  const el = document.getElementById('job-' + id);
+  if (el) el.classList.toggle('open', expandedJobs.has(id));
+}
+
+async function acceptJob(id) {
+  if (!sync || !sync.code) return;
+  if (!confirm('确认验收这批任务？验收后将归档到「已验收」标签。')) return;
+  try {
+    const r = await fetchWithRetry(`${cfg.url}/functions/v1/job-worker`, {
+      method: 'POST',
+      headers: { ...SYNC_HEADERS(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'accept', job_id: id, sync_code: sync.code }),
+    }, { timeout: 20000, retries: 1, label: '确认验收' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || '验收失败');
+    toast('已验收，任务归档');
+    loadJobs(true);
+  } catch (e) { toast('验收失败：' + e.message); }
+}
+
+async function retryJobPage(pageId) {
+  if (!sync || !sync.code) return;
+  try {
+    const r = await fetchWithRetry(`${cfg.url}/functions/v1/job-worker`, {
+      method: 'POST',
+      headers: { ...SYNC_HEADERS(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'retry', page_id: pageId, sync_code: sync.code }),
+    }, { timeout: 20000, retries: 1, label: '重试该页' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || '重试失败');
+    toast('已重新排队，云端会自动重试该页');
+    loadJobs(true);
+  } catch (e) { toast('重试失败：' + e.message); }
+}
 
 function fmtRecTime(iso) {
   if (!iso) return '';

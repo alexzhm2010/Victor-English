@@ -510,6 +510,47 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 .rec-pager button{border:1px solid var(--line);background:var(--card);color:var(--primary);
   border-radius:9px;padding:7px 13px;font-size:13px;cursor:pointer}
 .rec-pager button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- 任务执行清单（v2.16 云端任务） ---------- */
+.job-section{margin-bottom:18px}
+.job-section-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
+.job-section-hd h3{font-size:15px;font-weight:800;margin:0;color:var(--text)}
+.job-section-hd .job-refresh{font-size:12px;color:var(--primary);background:none;border:none;cursor:pointer;padding:4px 8px}
+.job-live{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:600}
+.job-live i{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;box-shadow:0 0 0 3px rgba(34,197,94,.18)}
+.job-tabs{display:flex;gap:6px;margin-bottom:10px}
+.job-tab{flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px 4px;border-radius:9px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--muted)}
+.job-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.job-card{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+.job-card-head{display:flex;align-items:center;gap:10px;padding:12px 13px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.job-card-head:active{background:rgba(226,240,252,.5)}
+.job-no{font-size:11px;color:var(--muted);letter-spacing:.3px}
+.job-title{font-size:14px;font-weight:800;color:var(--text);margin-top:1px}
+.job-badge{font-size:10px;font-weight:800;padding:3px 9px;border-radius:8px;flex-shrink:0;white-space:nowrap}
+.job-badge.queued{background:#e0e7ff;color:#4338ca}
+.job-badge.running{background:#fef3c7;color:#b45309}
+.job-badge.done{background:#fef9c3;color:#a16207}
+.job-badge.accepted{background:#dcfce7;color:#15803d}
+.job-badge.error{background:#fee2e2;color:#b91c1c}
+.job-prog{flex:1;min-width:60px;height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:6px}
+.job-prog i{display:block;height:100%;background:linear-gradient(90deg,#4a7db5,#6aa9e0);border-radius:6px;transition:width .4s}
+.job-meta{flex:1;min-width:0}
+.job-accept{font-size:11px;font-weight:800;color:#fff;background:#16a34a;border:none;border-radius:8px;padding:6px 11px;cursor:pointer;white-space:nowrap}
+.job-accept:disabled{opacity:.5;cursor:not-allowed}
+.job-detail{border-top:1px solid var(--line);padding:8px 13px 12px;background:rgba(243,248,253,.6);display:none}
+.job-card.open .job-detail{display:block}
+.job-page{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px dashed var(--line)}
+.job-page:last-child{border-bottom:none}
+.job-pg-no{font-size:12px;font-weight:800;color:var(--primary);min-width:46px}
+.job-pg-st{font-size:11px;font-weight:700;padding:2px 7px;border-radius:7px}
+.job-pg-st.pending{background:#e0e7ff;color:#4338ca}
+.job-pg-st.running{background:#fef3c7;color:#b45309}
+.job-pg-st.done{background:#dcfce7;color:#15803d}
+.job-pg-st.error{background:#fee2e2;color:#b91c1c}
+.job-pg-info{flex:1;min-width:0;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job-retry{font-size:10px;color:var(--primary);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 7px;cursor:pointer}
+.job-empty{text-align:center;color:var(--muted);font-size:13px;padding:26px 10px}
 .rec-pager .rec-pg{font-size:13px;color:var(--muted)}
 .rec-pager .rec-pg b{color:var(--primary)}
 .boundary-note{background:#f0fdf4;border-left:3px solid var(--green);padding:6px 10px;
@@ -678,7 +719,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
   <div class="header-right">
     <span id="syncChip" class="sync-chip" onclick="openSyncGate(true)">同步码</span>
-    <span id="headerVersion" class="version-mini">v2.15.0</span>
+    <span id="headerVersion" class="version-mini">v2.16.0</span>
   </div>
 </header>
 
@@ -709,7 +750,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
     <span class="side-sync-code" id="sideSyncCode">—</span>
     <span class="side-sync-edit">切换 ›</span>
   </div>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.15.0</b></div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.16.0</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -736,7 +777,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   <div class="batch-list" id="batchList"></div>
 
   <div class="batch-actions" id="batchActions" style="display:none">
-    <button class="btn btn-accent" id="autoBtn" onclick="autoRunAll()">🚀 开始识别并入库（统一提交）</button>
+    <button class="btn btn-accent" id="autoBtn" onclick="autoRunAll()">🚀 开始识别并入库（提交后自动执行，可关页面）</button>
   </div>
 
   <div class="progress" id="progressBox">
@@ -784,8 +825,20 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   </div>
 </section>
 
-<!-- ============ 导入记录页（清单化管理 · 分页 · 页码跳转） ============ -->
+<!-- ============ 导入记录页（任务执行清单 + 导入历史 · 分页 · 页码跳转） ============ -->
 <section class="page" id="page-records">
+  <!-- 云端任务执行清单（v2.16）：起了任务随时回来看结果，验收后才归档 -->
+  <div class="job-section" id="jobSection">
+    <div class="job-section-hd">
+      <h3>任务执行清单</h3>
+      <span class="job-live"><i></i>云端自动执行</span>
+    </div>
+    <div class="job-tabs" id="jobTabs">
+      <div class="job-tab active" data-tab="active" onclick="switchJobTab('active')">进行中 / 待验收</div>
+      <div class="job-tab" data-tab="accepted" onclick="switchJobTab('accepted')">已验收归档</div>
+    </div>
+    <div id="jobList"><div class="job-empty">加载任务清单…</div></div>
+  </div>
   <div class="rec-stats" id="recStats"></div>
   <div class="rec-jump">
     <input type="number" id="recJumpInput" min="1" inputmode="numeric" placeholder="输入页码，如 7">
@@ -842,7 +895,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
   <div class="version-card" id="versionCard">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.15.0</span>
+      <span class="version-badge" id="versionBadge">v2.16.0</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
