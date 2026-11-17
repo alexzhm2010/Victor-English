@@ -17,6 +17,13 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.8.0', date: '2026-11-17', items: [
+    '长按/右键单词改为行左滑：空出半行露出「已会 / 不会 / 进度」快捷按钮，移除意义不大的编辑框',
+    '已会与不会互斥，点选即存云端；再点一次取消',
+    '进度标签全局唯一（整本词库只有一个），标识当前学到哪里；设置新进度自动清除旧进度',
+    'A-Z 侧边滑块在进度词所属字母上嵌入 📍 标记，点击该字母直达上次学习位置',
+    '标签筛选条改为「全部 / 已会 / 不会 / 进度」新三态，彻底替换旧的不会/不熟/已掌握',
+  ]},
   { v: '2.7.0', date: '2026-11-17', items: [
     '词库右侧新增 A-Z 索引滑块：上下拖动快速定位到对应字母的词条',
     '当前字母放大、左右邻字母按距离平滑缩放过渡，松手后自动淡出',
@@ -1288,9 +1295,9 @@ async function refreshWords() {
       notes: w.vw_notes || []
     }));
   }
-  // 统一归一化：tags 数组 + 义项去重（消除重复扫描产生的 adj/adj. 双份义项）
+  // 统一归一化：tags 收敛为新三态 + 义项去重（消除重复扫描产生的 adj/adj. 双份义项）
   allWords.forEach(w => {
-    if (!Array.isArray(w.tags)) w.tags = [];
+    w.tags = Array.isArray(w.tags) ? w.tags.filter(t => t === '已会' || t === '不会' || t === '进度') : [];
     w.senses = dedupeSenses(w.senses);
   });
   // 按 A–Z 排序（忽略大小写），供仿书本顺序滚动
@@ -1324,6 +1331,7 @@ function onSearchChange() {
 const AZ_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 let _azLetterEls = [];        // 26 个字母 DOM
 let _azFirstIdx = {};         // 字母 -> filteredWords 中首个匹配下标
+let _azProgressLetter = null; // 进度词所属字母（在字母上嵌 📍 标记）
 let _azActive = -1;           // 当前激活字母下标（-1 无）
 let _azDragging = false;
 let _azBubbleTimer = null;
@@ -1343,6 +1351,20 @@ function buildAzMap() {
   });
   _azLetterEls.forEach((el, k) => {
     el.classList.toggle('available', _azFirstIdx[AZ_LETTERS[k]] != null);
+  });
+  buildAzProgress();
+}
+
+// 找出进度词（全局唯一）所属字母，在 A-Z 对应字母上嵌 📍 标记
+function buildAzProgress() {
+  _azProgressLetter = null;
+  const pw = allWords.find(w => Array.isArray(w.tags) && w.tags.includes('进度'));
+  if (pw) {
+    const c = wordInitial(pw);
+    if (c) _azProgressLetter = c;
+  }
+  _azLetterEls.forEach((el, k) => {
+    el.classList.toggle('has-progress', AZ_LETTERS[k] === _azProgressLetter);
   });
 }
 
@@ -1392,6 +1414,14 @@ function initAzIndex() {
   function jumpToLetter(i) {
     const letter = AZ_LETTERS[i];
     let idx = _azFirstIdx[letter];
+    // 进度字母：优先直达进度词本身（快速回到上次学习位置）
+    if (letter && letter === _azProgressLetter) {
+      const pw = allWords.find(w => Array.isArray(w.tags) && w.tags.includes('进度'));
+      if (pw) {
+        const pi = filteredWords.findIndex(w => w.id != null ? w.id === pw.id : w.headword === pw.headword);
+        if (pi >= 0) idx = pi;
+      }
+    }
     if (idx == null) {
       // 该字母无词：就近找下一个有词的字母（不必精确落空）
       for (let k = i + 1; k < 26; k++) { if (_azFirstIdx[AZ_LETTERS[k]] != null) { idx = _azFirstIdx[AZ_LETTERS[k]]; break; } }
@@ -1523,21 +1553,18 @@ function setupSentinelObserver() {
   _sentinelObserver.observe(sentinel);
 }
 
-// 重建标签筛选 chips
+// 重建学习状态筛选 chips（新三态：已会 / 不会 / 进度）
 function rebuildTagFilter() {
-  const PRESET = ['不会', '不熟', '已掌握'];
+  const PRESET = ['已会', '不会', '进度'];
   const counts = {};
   allWords.forEach(w => (w.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
-  // 自定义标签 = 出现过且非预置
-  const customs = Object.keys(counts).filter(t => !PRESET.includes(t)).sort();
-  if (activeTag !== '__all__' && !PRESET.includes(activeTag) && !customs.includes(activeTag)) activeTag = '__all__';
+  if (activeTag !== '__all__' && !PRESET.includes(activeTag)) activeTag = '__all__';
   const dot = c => `<span class="dot" style="background:${c}"></span>`;
+  const colorOf = t => t === '已会' ? '#16a34a' : t === '不会' ? '#dc2626' : '#d97706';
+  const iconOf  = t => t === '已会' ? '✓' : t === '不会' ? '✕' : '📍';
   let html = `<button class="tag-chip ${activeTag === '__all__' ? 'active' : ''}" data-tag="__all__" onclick="setActiveTag('__all__')">全部</button>`;
   PRESET.forEach(t => {
-    if (counts[t]) html += `<button class="tag-chip ${activeTag === t ? 'active' : ''}" data-tag="${t}" onclick="setActiveTag('${t}')">${dot(t==='不会'?'#dc2626':t==='不熟'?'#ea580c':'#16a34a')}${t} ${counts[t]}</button>`;
-  });
-  customs.forEach(t => {
-    html += `<button class="tag-chip ${activeTag === t ? 'active' : ''}" data-tag="${esc(t)}" onclick="setActiveTag('${esc(t)}')">${dot('#7c3aed')}${esc(t)} ${counts[t]}</button>`;
+    if (counts[t]) html += `<button class="tag-chip ${activeTag === t ? 'active' : ''}" data-tag="${t}" onclick="setActiveTag('${t}')">${dot(colorOf(t))}${iconOf(t)} ${t} ${counts[t]}</button>`;
   });
   document.getElementById('tagFilter').innerHTML = html;
 }
@@ -1610,22 +1637,32 @@ function wordCardHtml(w, i) {
     return `<div class="vw-note note-${esc(t)}"><span class="note-badge">${esc(t)}</span>${title}<div class="note-body">${content}</div></div>`;
   }).join('');
   const key = w.id != null ? ('id' + w.id) : ('hw' + esc(w.headword));
-  // 学习标签徽标：预置三档用各自颜色，自定义用紫色
-  const PRESET = ['不会','不熟','已掌握'];
-  const studyTags = (w.tags || []).map(t => {
-    const cls = PRESET.includes(t) ? t : 'custom';
-    return `<span class="study-tag ${cls}">${esc(t)}</span>`;
-  }).join('');
-  return `<div class="word-card" id="wc-${key}" data-derived="${w.derived_from ? '1' : '0'}"
-      oncontextmenu="event.preventDefault();openEditor('${key}')"
+  // 新三态徽标：已会 / 不会 / 进度（互斥逻辑见 toggleStudyState）
+  const tags = w.tags || [];
+  const studyTags =
+    (tags.includes('已会') ? '<span class="study-tag 已会">✓ 已会</span>' : '') +
+    (tags.includes('不会') ? '<span class="study-tag 不会">✕ 不会</span>' : '') +
+    (tags.includes('进度') ? '<span class="study-tag 进度">📍 进度</span>' : '');
+  const isProgress = tags.includes('进度');
+  return `<div class="word-card${isProgress ? ' is-progress' : ''}" id="wc-${key}" data-derived="${w.derived_from ? '1' : '0'}"
+      oncontextmenu="event.preventDefault();revealRow('${key}')"
       ontouchstart="startLongPress('${key}',event)" ontouchend="cancelLongPress()" ontouchmove="cancelLongPress()"
       onmousedown="startLongPress('${key}',event)" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()">
-    <div class="word-hd" onclick="toggleCard('${key}')">
-      <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-      <span class="word-name">${esc(w.headword)}</span>
-      <span class="word-ph">${esc(w.phonetic || '')}</span>
-      ${studyTags}${identityTag}${derivedTag}${level}${page}${partialTag}
-      <span class="word-def">${esc(w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '')}</span>
+    <div class="word-row">
+      <div class="word-swipe">
+        <div class="word-hd" onclick="toggleCard('${key}')">
+          <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          <span class="word-name">${esc(w.headword)}</span>
+          <span class="word-ph">${esc(w.phonetic || '')}</span>
+          ${studyTags}${identityTag}${derivedTag}${level}${page}${partialTag}
+          <span class="word-def">${esc(w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '')}</span>
+        </div>
+      </div>
+      <div class="word-actions">
+        <button class="act-btn${tags.includes('已会') ? ' sel-known' : ''}" onclick="toggleStudyState('${key}','已会')"><span class="ico">✓</span>已会</button>
+        <button class="act-btn${tags.includes('不会') ? ' sel-wont' : ''}" onclick="toggleStudyState('${key}','不会')"><span class="ico">✕</span>不会</button>
+        <button class="act-btn${isProgress ? ' sel-progress' : ''}" onclick="toggleStudyState('${key}','进度')"><span class="ico">📍</span>进度</button>
+      </div>
     </div>
     <div class="word-body">
       ${senses || '<div style="font-size:13px;color:var(--muted);padding:8px 0">（无详细义项）</div>'}
@@ -1634,22 +1671,47 @@ function wordCardHtml(w, i) {
   </div>`;
 }
 function toggleCard(key) {
+  // 长按左滑后紧随的 click 不应立刻收起/切换（保留约 500ms 窗口）
+  if (Date.now() - _revealTs < 500) return;
   const el = document.getElementById('wc-' + key);
-  if (el) el.classList.toggle('open');
+  if (!el) return;
+  // 若操作条已展开，先收起而不切换详情（避免点词头误触）
+  if (el.classList.contains('revealed')) { collapseRevealed(); return; }
+  el.classList.toggle('open');
 }
 
-/* ---------------- 长按检测 ---------------- */
+/* ---------------- 长按检测：左滑露出操作条 ---------------- */
 let _pressTimer = null;
 function startLongPress(key, ev) {
   cancelLongPress();
   _pressTimer = setTimeout(() => {
     _pressTimer = null;
     if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
-    openEditor(key);
-  }, 550);
+    revealRow(key);
+  }, 500);
 }
 function cancelLongPress() {
   if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
+}
+
+// 展开某行的操作条；再次触发同一行则收起；展开新行时收起旧行
+let _revealedKey = null;
+let _revealTs = 0;
+function revealRow(key) {
+  const prev = _revealedKey && document.getElementById('wc-' + _revealedKey);
+  if (prev) prev.classList.remove('revealed');
+  if (_revealedKey === key) { _revealedKey = null; return; }
+  const el = document.getElementById('wc-' + key);
+  if (!el) { _revealedKey = null; return; }
+  el.classList.add('revealed');
+  _revealedKey = key;
+  _revealTs = Date.now();
+}
+function collapseRevealed() {
+  if (!_revealedKey) return;
+  const el = document.getElementById('wc-' + _revealedKey);
+  if (el) el.classList.remove('revealed');
+  _revealedKey = null;
 }
 
 /* ---------------- 词条 key → word 对象 ---------------- */
@@ -1658,143 +1720,108 @@ function findWordByKey(key) {
   return allWords.find(w => ('hw' + esc(w.headword)) === key);
 }
 
-/* ---------------- 长按编辑：内容 + 学习标签 ---------------- */
-const TAG_PRESET = ['不会', '不熟', '已掌握'];
-let _editingKey = null;
-let _editingTags = [];
+/* ============================================================
+ * 学习状态：已会 / 不会（互斥） + 进度（全局唯一），存云端 tags
+ * ============================================================ */
+const STUDY_TAGS = ['已会', '不会', '进度'];
 
-// 自定义标签池（跨词复用，存本地）
-function loadCustomTags() {
-  try { return JSON.parse(localStorage.getItem('vocab_custom_tags') || '[]'); } catch (e) { return []; }
-}
-function saveCustomTags(arr) {
-  localStorage.setItem('vocab_custom_tags', JSON.stringify(Array.from(new Set(arr))));
-}
-
-function openEditor(key) {
-  cancelLongPress();
-  // 已打开则忽略（避免长按同时触发 contextmenu + touchstart 重复打开）
-  if (document.getElementById('editorModal').classList.contains('show')) return;
-  const w = findWordByKey(key);
-  if (!w) return;
-  _editingKey = key;
-  _editingTags = Array.isArray(w.tags) ? w.tags.slice() : [];
-  document.getElementById('edTitle').textContent = w.headword || '编辑词条';
-  document.getElementById('edMeta').textContent =
-    (w.phonetic || '') + (w.page_no ? ' · P' + w.page_no : '');
-  // 可编辑字段：音标、核心释义（inline_def）+ 每个义项的中文释义
-  let body = '';
-  body += `<div class="ed-field"><label>音标</label><input id="edPhonetic" value="${esc(w.phonetic || '')}"></div>`;
-  body += `<div class="ed-field"><label>核心释义（词头右侧）</label><input id="edInlineDef" value="${esc(w.inline_def || '')}" placeholder="如：绷带"></div>`;
-  (w.senses || []).forEach((s, idx) => {
-    const def = s.chinese_def || s.def || '';
-    const pos = s.pos || '';
-    const no = s.sense_no ?? s.no ?? (idx + 1);
-    body += `<div class="ed-sense-box">
-      <div class="ed-sense-hd">${no}. ${esc(pos)}</div>
-      <div class="ed-field" style="margin:2px 0 0"><label>中文释义</label>
-        <input data-sense-idx="${idx}" class="edSenseDef" value="${esc(def)}"></div>
-    </div>`;
-  });
-  document.getElementById('edBody').innerHTML = body;
-  renderEditorTags();
-  document.getElementById('editorModal').classList.add('show');
-}
-
-function closeEditor() {
-  document.getElementById('editorModal').classList.remove('show');
-  _editingKey = null;
-}
-
-// 编辑弹框里的标签选项（预置 + 自定义标签池 + 当前词已有的）
-function renderEditorTags() {
-  const pool = Array.from(new Set([...TAG_PRESET, ...loadCustomTags(), ..._editingTags]));
-  document.getElementById('edTagChips').innerHTML = pool.map(t => {
-    const sel = _editingTags.includes(t);
-    const cls = TAG_PRESET.includes(t) ? '' : 'custom';
-    const color = TAG_PRESET.includes(t) ? (t==='不会'?'#dc2626':t==='不熟'?'#ea580c':'#16a34a') : '#7c3aed';
-    return `<button class="tag-opt ${sel ? 'sel' : ''} ${cls}" data-tag="${esc(t)}" onclick="toggleEditorTag('${esc(t)}')">
-      <span class="dot" style="background:${sel ? '#fff' : color}"></span>${esc(t)}</button>`;
-  }).join('');
-}
-function toggleEditorTag(t) {
-  const i = _editingTags.indexOf(t);
-  if (i >= 0) _editingTags.splice(i, 1);
-  else _editingTags.push(t);
-  renderEditorTags();
-}
-function addCustomTag() {
-  const inp = document.getElementById('edCustomTag');
-  const t = (inp.value || '').trim();
-  if (!t) return;
-  if (!_editingTags.includes(t)) _editingTags.push(t);
-  const pool = loadCustomTags();
-  if (!pool.includes(t) && !TAG_PRESET.includes(t)) { pool.push(t); saveCustomTags(pool); }
-  inp.value = '';
-  renderEditorTags();
-}
-
-// 保存编辑：更新内存中的 allWords，并写回数据库/localStorage
-async function saveEditor(btn) {
-  if (!_editingKey) return;
-  const w = findWordByKey(_editingKey);
-  if (!w) { closeEditor(); return; }
-  const phonetic = document.getElementById('edPhonetic').value.trim();
-  const inlineDef = document.getElementById('edInlineDef').value.trim();
-  const senseDefs = Array.from(document.querySelectorAll('.edSenseDef'));
-  // 更新内存
-  w.phonetic = phonetic;
-  w.inline_def = inlineDef;
-  w.tags = _editingTags.slice();
-  senseDefs.forEach(inp => {
-    const idx = Number(inp.getAttribute('data-sense-idx'));
-    const s = (w.senses || [])[idx];
-    if (!s) return;
-    if (s.chinese_def !== undefined) s.chinese_def = inp.value.trim();
-    else s.def = inp.value.trim();
-  });
-  if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
-  try {
-    if (!cfg.demo && w.id != null) {
-      await patchWord(w, senseDefs);
-    } else {
-      // 演示模式：写回 localStorage
+// 写入单个词的 tags 到云端（或演示模式本地），返回是否成功
+async function persistStudyTags(w) {
+  const newTags = Array.isArray(w.tags) ? w.tags.filter(t => STUDY_TAGS.includes(t)) : [];
+  w.tags = newTags;
+  if (cfg.demo || w.id == null) {
+    if (cfg.demo) {
       let stored = [];
       try { stored = JSON.parse(localStorage.getItem(LS.demo) || '[]'); } catch (e) {}
       const idx = stored.findIndex(x => x.headword === w.headword);
       if (idx >= 0) stored[idx] = w; else stored.push(w);
       localStorage.setItem(LS.demo, JSON.stringify(stored));
     }
-    closeEditor();
-    toast('已保存');
-    rebuildTagFilter();
-    resetWordList();
-  } catch (e) {
-    toast('保存失败：' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '保存'; }
+    return true;
   }
+  const headers = { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' };
+  try {
+    const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_words?id=eq.${w.id}`, {
+      method: 'PATCH', headers, body: JSON.stringify({ tags: newTags }),
+    }, { timeout: 15000, retries: 1, label: '保存学习状态' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;
+  } catch (e) { console.warn('保存学习状态失败', e); return false; }
 }
 
-// 在线写回：vw_words(音标/核心释义/tags) + 逐条 vw_senses(中文释义)
-async function patchWord(w, senseDefs) {
-  const headers = { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' };
-  const wordPayload = { phonetic: w.phonetic || null, inline_def: w.inline_def || null, tags: w.tags };
-  const r1 = await fetchWithRetry(`${cfg.url}/rest/v1/vw_words?id=eq.${w.id}`, {
-    method: 'PATCH', headers, body: JSON.stringify(wordPayload),
-  }, { timeout: 15000, retries: 1, label: '保存词条' });
-  if (!r1.ok) throw new Error('词条保存失败 ' + r1.status + ' ' + (await r1.text()).slice(0, 80));
-  // 义项中文释义（仅当有 id 的在线义项）
-  for (const inp of senseDefs) {
-    const idx = Number(inp.getAttribute('data-sense-idx'));
-    const s = (w.senses || [])[idx];
-    if (!s || s.id == null) continue;
-    const val = s.chinese_def !== undefined ? s.chinese_def : s.def;
-    const r2 = await fetchWithRetry(`${cfg.url}/rest/v1/vw_senses?id=eq.${s.id}`, {
-      method: 'PATCH', headers, body: JSON.stringify({ chinese_def: val || null }),
-    }, { timeout: 15000, retries: 1, label: '保存义项' });
-    if (!r2.ok) throw new Error('义项保存失败 ' + r2.status);
+// 点击操作按钮：已会/不会互斥，进度全局唯一（清掉其它词）
+async function toggleStudyState(key, tag) {
+  const w = findWordByKey(key);
+  if (!w) return;
+  if (!Array.isArray(w.tags)) w.tags = [];
+  const had = w.tags.includes(tag);
+
+  // 计算本次涉及的词：本身 +（进度时）被清除旧进度的词
+  const affected = [];
+  if (tag === '进度') {
+    if (!had) {
+      // 清掉其它词上的进度标记
+      allWords.forEach(x => {
+        if (x !== w && Array.isArray(x.tags) && x.tags.includes('进度')) {
+          x.tags = x.tags.filter(t => t !== '进度');
+          affected.push(x);
+        }
+      });
+    }
+    w.tags = had ? w.tags.filter(t => t !== '进度') : [...w.tags.filter(t => t !== '进度'), '进度'];
+  } else {
+    // 已会 / 不会互斥
+    const other = tag === '已会' ? '不会' : '已会';
+    w.tags = w.tags.filter(t => t !== other);          // 先移除对状态
+    w.tags = had ? w.tags.filter(t => t !== tag)        // 再点同一状态 → 取消
+                 : [...w.tags.filter(t => t !== tag), tag];
   }
+  affected.push(w);
+
+  // 乐观更新 UI
+  collapseRevealed();
+  buildAzProgress();
+  rebuildTagFilter();
+  refreshStudyBadges();
+  if (activeTag !== '__all__') resetWordList();  // 筛选态下状态变化需重排列表
+
+  // 云端写入
+  let ok = true;
+  for (const x of affected) { if (!await persistStudyTags(x)) ok = false; }
+  if (!ok) toast('保存失败，请检查网络');
 }
+
+// 仅刷新已渲染词卡上的状态徽标/按钮选中态/进度高亮，避免整列表重排
+function refreshStudyBadges() {
+  allWords.forEach(w => {
+    const key = w.id != null ? ('id' + w.id) : ('hw' + esc(w.headword));
+    const el = document.getElementById('wc-' + key);
+    if (!el) return;                       // 未渲染的词跳过（滚动到时按 tags 重新渲染）
+    const tags = w.tags || [];
+    el.classList.toggle('is-progress', tags.includes('进度'));
+    const acts = el.querySelectorAll('.act-btn');
+    if (acts[0]) acts[0].classList.toggle('sel-known', tags.includes('已会'));
+    if (acts[1]) acts[1].classList.toggle('sel-wont', tags.includes('不会'));
+    if (acts[2]) acts[2].classList.toggle('sel-progress', tags.includes('进度'));
+    // 词头徽标区：找到 .word-hd 里的 study-tag 并重建
+    const hd = el.querySelector('.word-hd');
+    if (hd) {
+      hd.querySelectorAll('.study-tag').forEach(n => n.remove());
+      const ph = hd.querySelector('.word-ph');
+      const html =
+        (tags.includes('已会') ? '<span class="study-tag 已会">✓ 已会</span>' : '') +
+        (tags.includes('不会') ? '<span class="study-tag 不会">✕ 不会</span>' : '') +
+        (tags.includes('进度') ? '<span class="study-tag 进度">📍 进度</span>' : '');
+      if (html) { const tmp = document.createElement('div'); tmp.innerHTML = html;
+        while (tmp.firstChild) hd.insertBefore(tmp.firstChild, ph ? ph.nextSibling : hd.firstChild); }
+    }
+  });
+}
+
+// 点击页面空白处收起操作条
+document.addEventListener('click', (e) => {
+  if (_revealedKey && Date.now() - _revealTs > 500 && !e.target.closest('.word-actions')) collapseRevealed();
+});
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
