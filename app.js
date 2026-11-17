@@ -17,6 +17,10 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.9', date: '2026-11-17', items: [
+    '修复失败重试：网络超时实际已入库时自动纠正为成功，不再误报失败',
+    '修复跨页词：重试/跳过失败页后，从数据库承接半截词并自动合并下一页',
+  ]},
   { v: '2.1.8', date: '2026-11-17', items: [
     '修复重复解析：同一词重扫后词性带点/不带点生成两套义项，导致中文释义与例句重复',
     '词性归一合并义项，例句按英文去重，释义取更完整的一条',
@@ -317,6 +321,66 @@ async function markRecordedPages() {
 }
 // 入库成功后让缓存失效，下次读取会拉到最新页码 / 最新已录入集合
 function invalidateProgressCache() { _progressCache.key = null; _recordedCache.key = null; }
+
+// 假失败复查：网络超时/中断时，服务端可能已把词条写入再回传响应失败。
+// 这里强制查一次词库该页是否已有词条，有则判定"其实已成功入库"。
+async function isPageActuallyRecorded(pageNo) {
+  if (!(pageNo > 0) || cfg.demo || !cfg.url || !cfg.key) return false;
+  try {
+    const r = await fetchWithRetry(
+      `${cfg.url}/rest/v1/vw_words?book_id=eq.${encodeURIComponent(cfg.book)}&page_no=eq.${pageNo}&select=id&limit=1`,
+      { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } },
+      { timeout: 12000, retries: 1, label: '复查该页入库状态' }
+    );
+    if (!r.ok) return false;
+    const data = await r.json();
+    invalidateProgressCache();   // 允许下次 markRecordedPages 拿到最新集合
+    return Array.isArray(data) && data.length > 0;
+  } catch (e) { return false; }
+}
+
+// 从数据库读取某页的 partial_words，构造跨页上下文。
+// 不依赖内存 nextContext，因此即使上一页失败/重试/假失败纠正，下一页仍能拿到半截词信息。
+async function loadPageContext(pageNo) {
+  if (!(pageNo > 0) || cfg.demo || !cfg.url || !cfg.key) return null;
+  try {
+    const r = await fetchWithRetry(
+      `${cfg.url}/rest/v1/vw_scan_batches?book_id=eq.${encodeURIComponent(cfg.book)}&page_no=eq.${pageNo}&select=page_no,partial_words&order=id.desc&limit=1`,
+      { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } },
+      { timeout: 12000, retries: 1, label: '读取跨页上下文' }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    const row = rows && rows[0];
+    if (!row) return null;
+    const partial_words = Array.isArray(row.partial_words) ? row.partial_words : [];
+    if (!partial_words.length) return null;
+    return { page_no: row.page_no, partial_words };
+  } catch (e) { return null; }
+}
+
+// 重试某页成功后，若它产生页尾半截词、且下一页已在本次队列中，
+// 自动用本页上下文重新解析下一页一次，把跨页词合并成一条（带防循环标志，不递归向下）。
+let _repairingNext = false;
+async function autoRepairNextPage(item, result) {
+  if (_repairingNext || !result) return;
+  const partials = result.partial_words || [];
+  if (!partials.length || !(item.pageNo > 0)) return;
+  const nextNo = item.pageNo + 1;
+  const nextItem = batchQueue.find(x => x !== item && x.pageNo === nextNo);
+  if (!nextItem) return;   // 下一页不在队列，无法自动补全，保留 partial 标记即可
+  _repairingNext = true;
+  try {
+    const ctx = result.nextContext || { page_no: item.pageNo, partial_words: partials };
+    await parseOnePage(nextItem, nextNo, ctx, batchQueue.indexOf(nextItem));
+    invalidateProgressCache();
+    toast(`第 ${item.pageNo} 页跨页词「${partials.join('、')}」已自动并入第 ${nextNo} 页`);
+  } catch (e) {
+    toast(`第 ${item.pageNo} 页跨页词未能自动合并，可重扫第 ${nextNo} 页：${e.message}`);
+  } finally {
+    _repairingNext = false;
+  }
+}
 // 刷新扫描页常驻进度条
 function updateProgressDisplay() {
   fetchLastMaxPage().then(() => {
@@ -548,11 +612,14 @@ function renderBatch() {
   };
   list.innerHTML = batchQueue.map((it, i) => {
     const running = !!it.running;
-    // 前期已录入优先显示，不再走普通解析状态
-    const isRecorded = it.recorded && it.pageNo > 0 && it.status !== 'error';
+    // 前期已录入优先显示，不再走普通解析状态（带自定义 note 的完成项除外，用 note 说明）
+    const hasNote = it.status === 'done' && it.result && it.result.note;
+    const isRecorded = it.recorded && it.pageNo > 0 && it.status !== 'error' && !hasNote;
     const st = isRecorded ? statusText.recorded : (statusText[it.status] || it.status);
     let extra = '';
-    if (isRecorded) {
+    if (hasNote) {
+      extra = `<div class="boundary-note recorded">✅ ${esc(it.result.note)}</div>`;
+    } else if (isRecorded) {
       extra = `<div class="boundary-note recorded">📖 第 ${it.pageNo} 页此前已录入词库，本次自动跳过、不重复入库。如需重扫，改一下左侧页码即可。</div>`;
     } else if (it.status === 'detected' && it.pageNo > 0) {
       extra = `<div class="boundary-note">📖 从图片识别到第 ${it.pageNo} 页，可点左侧页码校正</div>`;
@@ -560,7 +627,7 @@ function renderBatch() {
     if (it.error && it.status === 'error') {
       extra += `<div class="boundary-note partial">${esc(it.error)}</div>`;
     }
-    if (it.status === 'done' && it.result) {
+    if (it.status === 'done' && it.result && !hasNote) {
       extra = `<div class="batch-status">识别 ${it.result.words_found || 0} 词 / ${it.result.examples_found || 0} 例句${it.result.merged_examples ? ` · 合并 ${it.result.merged_examples} 条` : ''}</div>`;
       if (it.result.resumed_words) {
         extra += `<div class="boundary-note">🔗 补全上一页半截词 ${it.result.resumed_words} 个</div>`;
@@ -570,8 +637,7 @@ function renderBatch() {
         extra += `<div class="boundary-note partial">⏳ 页尾半截词「${pw.map(esc).join('、')}」已暂存，下页自动补全</div>`;
       }
     }
-    const statusCls = isRecorded ? 'recorded'
-      : (it.status === 'error' ? 'error' : it.status);
+    const statusCls = isRecorded ? 'recorded' : (it.status === 'error' ? 'error' : it.status);
     const pageVal = it.pageNo || '';
     const pgInput = running
       ? `<span class="pg-tag">P${it.pageNo || '?'}</span>`
@@ -805,8 +871,15 @@ async function scanAllPages() {
       summary.push(result);
       if (result && result.nextContext) nextContext = result.nextContext;
     } catch (e) {
-      item.status = 'error';
-      item.error = e.message;
+      // 假失败复查：网络超时可能服务端已入库，若该页已有词则纠正为成功
+      if (await isPageActuallyRecorded(pageNo)) {
+        item.status = 'done';
+        item.error = null;
+        item.result = { ok: true, words_found: null, note: '服务端已入库成功，仅为回传超时（无需重试）' };
+      } else {
+        item.status = 'error';
+        item.error = e.message;
+      }
     }
     renderBatch();
   }
@@ -906,25 +979,37 @@ async function runOnePage(id) {
     if (!(item.imageUrl && item.pageNo > 0)) {
       await detectOnePage(item);
     }
-    // 2) 检查是否前期已录入
+    // 2) 检查是否前期已录入（含"本次假失败其实已入库"的情况）
     await markRecordedPages();
     if (item.pageNo > 0 && item.recorded) {
       item.status = 'done';
-      item.result = { words_found: 0, examples_found: 0, note: '前期已录入，跳过' };
+      item.error = null;
+      item.result = { ok: true, words_found: null, note: `已确认第 ${item.pageNo} 页词条已在词库中，无需重扫` };
       renderBatch();
-      toast(`第 ${item.pageNo} 页此前已录入，已跳过`);
+      toast(`第 ${item.pageNo} 页已成功入库（此前失败提示为网络误报），已标记完成`);
       return;
     }
     if (!item.pageNo) throw new Error('未识别到页码，请在左侧手动填写页码');
-    // 3) 解析入库
-    const result = await parseOnePage(item, item.pageNo, null, batchQueue.indexOf(item));
+    // 3) 解析入库。带上"上一页"的跨页上下文（从数据库读取，孤立重试也能正确承接页首词）
+    const prevCtx = await loadPageContext(item.pageNo - 1);
+    const result = await parseOnePage(item, item.pageNo, prevCtx, batchQueue.indexOf(item));
     item.result = result;
+    // 4) 若本页产生页尾半截词，且下一页已在队列，自动重扫下一页合并跨页词
+    await autoRepairNextPage(item, result);
     setProgress(true, 100, `第 ${item.pageNo} 页完成`);
     toast(`第 ${item.pageNo} 页处理完成：${result.words_found || 0} 词`);
   } catch (e) {
-    item.status = 'error';
-    item.error = e.message;
-    toast(`处理失败：${e.message}`);
+    // 假失败复查：若服务端其实已入库，纠正为成功而非失败
+    if (await isPageActuallyRecorded(item.pageNo)) {
+      item.status = 'done';
+      item.error = null;
+      item.result = { ok: true, words_found: null, note: '服务端已入库成功，仅为回传超时（无需重试）' };
+      toast(`第 ${item.pageNo} 页其实已成功入库（网络误报），已标记完成`);
+    } else {
+      item.status = 'error';
+      item.error = e.message;
+      toast(`处理失败：${e.message}`);
+    }
   } finally {
     item.running = false;
     renderBatch();
