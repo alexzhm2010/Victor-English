@@ -17,6 +17,12 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.5.0', date: '2026-11-17', items: [
+    '扫描页收敛为极简三步：拍摄框 → 已选列表 → 主按钮，去掉占据主流程的版本卡片',
+    '版本更新日志移入「设置 → 版本记录」，可展开查看全部历史版本',
+    '配色统一为蓝主色系：主按钮改蓝色渐变，去除装饰性红色/绿色/紫色，仅保留语义色（成功绿/失败红）',
+    '「上次扫描进度」收窄为一行轻量提示，容器样式统一',
+  ]},
   { v: '2.4.0', date: '2026-11-17', items: [
     '恢复「高考链接」蓝底框解析：作为标签框归入对应词条的 notes，不再整块跳过（ache/achievement 等可见）',
     '标签框展示改为通用：辨/注/同/反/句型/高考链接/常用词块等全部显示，新增标签无需改代码',
@@ -130,6 +136,14 @@ function renderVersion() {
   set('versionDate', latest.date + ' 更新');
   const latestBox = document.getElementById('versionLatest');
   if (latestBox) latestBox.innerHTML = latest.items.map(x => '<div class="vitem">• ' + esc(x) + '</div>').join('');
+  // 设置页：历史版本列表（当前版本之外的全部记录）
+  const histBox = document.getElementById('versionHistory');
+  if (histBox) {
+    histBox.innerHTML = CHANGELOG.slice(1).map(rel =>
+      '<div class="vrel"><span class="vrel-v">v' + rel.v + '</span><span class="vrel-date">' + rel.date + '</span>' +
+      '<div class="vrel-items">' + rel.items.map(x => '• ' + esc(x)).join('<br>') + '</div></div>'
+    ).join('');
+  }
 }
 function toggleChangelog() {
   const h = document.getElementById('versionHistory');
