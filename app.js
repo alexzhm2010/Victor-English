@@ -17,6 +17,9 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.3', date: '2026-11-17', items: [
+    '搜索结果数改为分数形式（搜索数/总数），表头更简洁',
+  ]},
   { v: '2.1.2', date: '2026-11-17', items: [
     '取消高考词频 Rⁿ 小标（识别不准且对背词意义不大）',
     '词库页排版压紧：字号缩小、间距收紧，一页显示更多单词',
@@ -1079,11 +1082,9 @@ function resetWordList() {
   const host = document.getElementById('wordList');
   host.innerHTML = '';
   const q = (document.getElementById('searchInput').value || '').trim();
-  const summary = document.getElementById('listSummary');
-  const isFiltering = !!(q || activeTag !== '__all__');
-  summary.innerHTML = isFiltering
-    ? `搜索到 <b>${filteredWords.length}</b> / 共 ${allWords.length} 词`
-    : `共 <b>${allWords.length}</b> 词`;
+  // 分数形式：分子 = 搜索/筛选后的数量，分母 = 全部数量
+  document.getElementById('listSummary').innerHTML =
+    `<b>${filteredWords.length}</b><span class="frac-sep">/</span>${allWords.length}`;
   const sentinel = document.getElementById('scrollSentinel');
   if (!filteredWords.length) {
     sentinel.classList.add('hidden');
@@ -1134,7 +1135,7 @@ function rebuildTagFilter() {
   const customs = Object.keys(counts).filter(t => !PRESET.includes(t)).sort();
   if (activeTag !== '__all__' && !PRESET.includes(activeTag) && !customs.includes(activeTag)) activeTag = '__all__';
   const dot = c => `<span class="dot" style="background:${c}"></span>`;
-  let html = `<button class="tag-chip ${activeTag === '__all__' ? 'active' : ''}" data-tag="__all__" onclick="setActiveTag('__all__')">全部 ${allWords.length}</button>`;
+  let html = `<button class="tag-chip ${activeTag === '__all__' ? 'active' : ''}" data-tag="__all__" onclick="setActiveTag('__all__')">全部</button>`;
   PRESET.forEach(t => {
     if (counts[t]) html += `<button class="tag-chip ${activeTag === t ? 'active' : ''}" data-tag="${t}" onclick="setActiveTag('${t}')">${dot(t==='不会'?'#dc2626':t==='不熟'?'#ea580c':'#16a34a')}${t} ${counts[t]}</button>`;
   });
