@@ -17,6 +17,12 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.3.0', date: '2026-11-17', items: [
+    'UI 全面重设计：引用玻璃渐变淡蓝主题，令牌化配色与阴影',
+    '桌面端新增左侧导航栏与多列词卡布局，手机端保留底部导航',
+    '顶栏/搜索毛玻璃吸顶，触摸目标放大到 44px，补齐焦点环与安全区',
+    '编辑弹框桌面居中、相机桌面窗口化，保留词库仿书本纸张质感',
+  ]},
   { v: '2.2.2', date: '2026-11-17', items: [
     '修复漏词：AI 偶尔把多个单词嵌套进前一个词的结构里，导致只入库少数词；现自动打平提取全部词条',
     '实测第6页由 2 词恢复为 12 词，提示词同步强化「词条必须平级」',
@@ -115,6 +121,7 @@ function renderVersion() {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('headerVersion', 'v' + latest.v);
   set('versionBadge', 'v' + latest.v);
+  set('sideVersion', 'v' + latest.v);
   set('versionDate', latest.date + ' 更新');
   const latestBox = document.getElementById('versionLatest');
   if (latestBox) latestBox.innerHTML = latest.items.map(x => '<div class="vitem">• ' + esc(x) + '</div>').join('');
@@ -1255,8 +1262,9 @@ async function refreshWords() {
 }
 function updateBadge() {
   const b = document.getElementById('navBadge');
-  b.textContent = allWords.length;
-  b.classList.toggle('show', allWords.length > 0);
+  if (b) { b.textContent = allWords.length; b.classList.toggle('show', allWords.length > 0); }
+  const sb = document.getElementById('sideBadge');
+  if (sb) { sb.textContent = allWords.length; sb.classList.toggle('show', allWords.length > 0); }
 }
 
 /* ---------------- 词库浏览：仿书本 · 单列无限滚动 · 搜索 · 标签筛选 ---------------- */
