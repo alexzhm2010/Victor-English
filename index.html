@@ -215,14 +215,15 @@ input[type=file]{display:none}
 nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:#fff;
   box-shadow:0 -2px 14px rgba(20,50,90,.08);display:flex;z-index:30;
   padding-bottom:env(safe-area-inset-bottom)}
-nav button{flex:1;border:none;background:none;display:flex;flex-direction:column;
+nav button{position:relative;flex:1;border:none;background:none;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:3px;color:var(--muted);font-size:11px;
   font-family:inherit;cursor:pointer}
 nav button.active{color:var(--primary);font-weight:700}
 nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
-.badge-count{position:absolute;top:8px;right:calc(33% - 18px);background:var(--accent);
+.badge-count{position:absolute;top:8px;left:50%;margin-left:4px;background:var(--accent);
   color:#fff;font-size:9px;min-width:16px;height:16px;border-radius:8px;
-  display:none;align-items:center;justify-content:center;padding:0 4px}
+  display:none;align-items:center;justify-content:center;padding:0 4px;line-height:1;
+  border:2px solid #fff}
 .badge-count.show{display:flex}
 
 .toast{position:fixed;top:70px;left:50%;transform:translateX(-50%) translateY(-10px);
@@ -373,21 +374,11 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 <header>
   <h1>维克多背单词</h1>
-  <span id="headerVersion" class="version-mini">v2.1.4</span>
+  <span id="headerVersion" class="version-mini">v2.1.6</span>
 </header>
 
 <!-- ============ 扫描页 ============ -->
 <section class="page active" id="page-scan">
-  <div class="version-card">
-    <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.1.4</span>
-      <span class="version-date" id="versionDate">2026-11-17 更新</span>
-      <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
-    </div>
-    <div class="version-latest" id="versionLatest"></div>
-    <div class="version-history" id="versionHistory"></div>
-  </div>
-
   <div class="upload-zone" id="dropZone">
     <div class="upload-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -436,6 +427,16 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
 
   <div class="hint" id="scanHint">
     <b>关于演示模式：</b>未配置 Supabase 时，会用内置 P123 样例演示完整流程，数据存在本机。当前为在线模式，可直接使用真实批量扫描。
+  </div>
+
+  <div class="version-card" id="versionCard">
+    <div class="version-head" onclick="toggleChangelog()">
+      <span class="version-badge" id="versionBadge">v2.1.6</span>
+      <span class="version-date" id="versionDate">2026-11-17 更新</span>
+      <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
+    </div>
+    <div class="version-latest" id="versionLatest"></div>
+    <div class="version-history" id="versionHistory"></div>
   </div>
 </section>
 
