@@ -17,6 +17,11 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.2.0', date: '2026-11-17', items: [
+    '新增跨页「握手池」：残段常驻数据库，任意顺序/任意时间间隔录入都能自动补全',
+    '先录后页再补前页：页首残段入池，前页录入后自动反向合并',
+    '握手信息按「页码+头/尾」唯一存储，重复扫描不产生重复数据',
+  ]},
   { v: '2.1.9', date: '2026-11-17', items: [
     '修复失败重试：网络超时实际已入库时自动纠正为成功，不再误报失败',
     '修复跨页词：重试/跳过失败页后，从数据库承接半截词并自动合并下一页',
@@ -339,23 +344,28 @@ async function isPageActuallyRecorded(pageNo) {
   } catch (e) { return false; }
 }
 
-// 从数据库读取某页的 partial_words，构造跨页上下文。
-// 不依赖内存 nextContext，因此即使上一页失败/重试/假失败纠正，下一页仍能拿到半截词信息。
+// 从「握手池」读取某页页尾的 pending 残段，构造跨页上下文。
+// 残段常驻 vw_page_handshakes，不依赖内存 nextContext，
+// 因此即使上一页是很久前录的、失败重试补录的、中间隔了很多页，下一页仍能拿到半截词信息。
+// （后端 scan-page 也会主动查同一张池表，这里传参是双保险。）
 async function loadPageContext(pageNo) {
   if (!(pageNo > 0) || cfg.demo || !cfg.url || !cfg.key) return null;
   try {
     const r = await fetchWithRetry(
-      `${cfg.url}/rest/v1/vw_scan_batches?book_id=eq.${encodeURIComponent(cfg.book)}&page_no=eq.${pageNo}&select=page_no,partial_words&order=id.desc&limit=1`,
+      `${cfg.url}/rest/v1/vw_page_handshakes?book_id=eq.${encodeURIComponent(cfg.book)}`
+        + `&page_no=eq.${pageNo}&side=eq.tail&status=eq.pending`
+        + `&select=page_no,headword,payload&order=id.desc`,
       { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } },
-      { timeout: 12000, retries: 1, label: '读取跨页上下文' }
+      { timeout: 12000, retries: 1, label: '读取跨页握手池' }
     );
     if (!r.ok) return null;
     const rows = await r.json();
-    const row = rows && rows[0];
-    if (!row) return null;
-    const partial_words = Array.isArray(row.partial_words) ? row.partial_words : [];
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const partial_words = rows
+      .filter(x => x.headword)
+      .map(x => ({ headword: x.headword, senses: Array.isArray(x.payload) ? x.payload : [] }));
     if (!partial_words.length) return null;
-    return { page_no: row.page_no, partial_words };
+    return { page_no: pageNo, partial_words };
   } catch (e) { return null; }
 }
 
@@ -368,7 +378,8 @@ async function autoRepairNextPage(item, result) {
   if (!partials.length || !(item.pageNo > 0)) return;
   const nextNo = item.pageNo + 1;
   const nextItem = batchQueue.find(x => x !== item && x.pageNo === nextNo);
-  if (!nextItem) return;   // 下一页不在队列，无法自动补全，保留 partial 标记即可
+  if (!nextItem) return;   // 下一页不在队列，无法自动补全；残段已在握手池，日后录入会自动合并
+  if (nextItem.status === 'done' && !nextItem.error) return;  // 下一页已成功入库，幂等跳过（后端已按池合并）
   _repairingNext = true;
   try {
     const ctx = result.nextContext || { page_no: item.pageNo, partial_words: partials };
@@ -867,7 +878,13 @@ async function scanAllPages() {
     }
     setProgress(true, Math.round(i / total * 100), `第 ${pageNo} 页（${i + 1}/${total}）：AI 解析入库中…`);
     try {
-      const result = await parseOnePage(item, pageNo, nextContext, i);
+      // 上下文双来源：优先用同批次内存 nextContext，否则从握手池读上一页 pending 残段。
+      // 这样即使上一页隔很久才录、或本批次不含相邻页，也能接上跨页词。
+      let ctx = nextContext;
+      if (!ctx || ctx.page_no !== pageNo - 1) {
+        ctx = await loadPageContext(pageNo - 1) || ctx;
+      }
+      const result = await parseOnePage(item, pageNo, ctx, i);
       summary.push(result);
       if (result && result.nextContext) nextContext = result.nextContext;
     } catch (e) {
