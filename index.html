@@ -466,6 +466,52 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 .mini-spinner{display:inline-block;width:11px;height:11px;border:2px solid #d8b4fe;
   border-top-color:#9333ea;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- 导入记录 ---------- */
+.rec-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.rec-stat{flex:1;min-width:88px;background:var(--glass);border:1px solid var(--line);border-radius:12px;
+  padding:9px 10px;text-align:center;box-shadow:var(--shadow)}
+.rec-stat b{display:block;font-size:19px;color:var(--primary);font-weight:800;line-height:1.2}
+.rec-stat span{font-size:11px;color:var(--muted)}
+.rec-jump{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.rec-jump input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;
+  font-size:14px;background:var(--card);color:var(--text)}
+.rec-jump .btn{padding:8px 12px;font-size:13px;white-space:nowrap}
+.rec-filter-hint{font-size:12px;color:var(--muted);min-height:16px;margin:2px 2px 8px}
+.rec-filter-hint b{color:var(--primary)}
+.record-list{margin-top:2px}
+.rec-loading,.rec-empty{text-align:center;color:var(--muted);font-size:13px;padding:40px 10px}
+.rec-item{background:var(--card);border-radius:12px;box-shadow:var(--shadow);margin-bottom:9px;
+  border:1px solid var(--line);overflow:hidden;transition:box-shadow .2s,border-color .2s}
+.rec-item.focus-flash{border-color:var(--primary);box-shadow:0 0 0 3px rgba(74,125,181,.22)}
+.rec-head{display:flex;align-items:center;gap:11px;padding:12px 13px;cursor:pointer;user-select:none;-webkit-user-select:none}
+.rec-head:active{background:rgba(226,240,252,.5)}
+.rec-page{font-size:17px;font-weight:800;color:var(--primary);flex-shrink:0;min-width:52px}
+.rec-page small{font-size:10px;font-weight:600;color:var(--muted);display:block;letter-spacing:.5px}
+.rec-meta{flex:1;min-width:0}
+.rec-count{font-size:14px;font-weight:700}
+.rec-count em{font-style:normal;color:var(--muted);font-weight:500;font-size:12px;margin-left:5px}
+.rec-time{font-size:11px;color:var(--muted);margin-top:2px}
+.rec-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;flex-shrink:0}
+.rec-badge.done{background:#dcfce7;color:#15803d}
+.rec-badge.detected{background:#fef3c7;color:#b45309}
+.rec-badge.failed,.rec-badge.error{background:#fee2e2;color:#b91c1c}
+.rec-arrow{color:var(--muted);font-size:13px;transition:transform .2s;flex-shrink:0}
+.rec-item.open .rec-arrow{transform:rotate(90deg)}
+.rec-words{border-top:1px solid var(--line);padding:10px 13px 13px;background:rgba(243,248,253,.6)}
+.rec-words-hd{font-size:11px;color:var(--muted);margin-bottom:7px;font-weight:600}
+.rec-word{display:inline-flex;flex-direction:column;background:var(--card);border:1px solid var(--line);
+  border-radius:8px;padding:5px 9px;margin:0 6px 6px 0;max-width:100%;cursor:pointer}
+.rec-word:active{background:var(--primary-l)}
+.rec-word b{font-size:13px;color:var(--text)}
+.rec-word span{font-size:11px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-word-none{font-size:12px;color:var(--muted);padding:4px 0}
+.rec-pager{display:flex;justify-content:center;align-items:center;gap:10px;margin:16px 0 8px}
+.rec-pager button{border:1px solid var(--line);background:var(--card);color:var(--primary);
+  border-radius:9px;padding:7px 13px;font-size:13px;cursor:pointer}
+.rec-pager button:disabled{opacity:.4;cursor:not-allowed}
+.rec-pager .rec-pg{font-size:13px;color:var(--muted)}
+.rec-pager .rec-pg b{color:var(--primary)}
 .boundary-note{background:#f0fdf4;border-left:3px solid var(--green);padding:6px 10px;
   font-size:11px;color:#166534;margin-top:4px;border-radius:4px}
 .boundary-note.partial{background:#fffbeb;border-left-color:#f59e0b;color:#92400e}
@@ -632,7 +678,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
   <div class="header-right">
     <span id="syncChip" class="sync-chip" onclick="openSyncGate(true)">同步码</span>
-    <span id="headerVersion" class="version-mini">v2.13.0</span>
+    <span id="headerVersion" class="version-mini">v2.14.0</span>
   </div>
 </header>
 
@@ -649,6 +695,10 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
       <span>词库</span>
       <i class="side-badge" id="sideBadge">0</i>
     </button>
+    <button data-page="records" onclick="switchPage('records')">
+      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      <span>记录</span>
+    </button>
     <button data-page="settings" onclick="switchPage('settings')">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9 2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       <span>设置</span>
@@ -659,7 +709,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
     <span class="side-sync-code" id="sideSyncCode">—</span>
     <span class="side-sync-edit">切换 ›</span>
   </div>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.13.0</b></div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.14.0</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -734,6 +784,21 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   </div>
 </section>
 
+<!-- ============ 导入记录页（清单化管理 · 分页 · 页码跳转） ============ -->
+<section class="page" id="page-records">
+  <div class="rec-stats" id="recStats"></div>
+  <div class="rec-jump">
+    <input type="number" id="recJumpInput" min="1" inputmode="numeric" placeholder="输入页码，如 7">
+    <button class="btn" onclick="jumpToRecordPage()">跳到该页</button>
+    <button class="btn btn-ghost" onclick="resetRecordFilter()" title="显示全部">全部</button>
+  </div>
+  <div class="rec-filter-hint" id="recFilterHint"></div>
+  <div id="recordList" class="record-list">
+    <div class="rec-loading">加载导入记录…</div>
+  </div>
+  <div class="rec-pager" id="recPager"></div>
+</section>
+
 <!-- ============ 设置页 ============ -->
 <section class="page" id="page-settings">
   <div class="settings">
@@ -777,7 +842,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
   <div class="version-card" id="versionCard">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.13.0</span>
+      <span class="version-badge" id="versionBadge">v2.14.0</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
@@ -795,6 +860,10 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
     <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
     <span>词库</span>
     <i class="badge-count" id="navBadge">0</i>
+  </button>
+  <button data-page="records" onclick="switchPage('records')">
+    <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+    <span>记录</span>
   </button>
   <button data-page="settings" onclick="switchPage('settings')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>

@@ -28,6 +28,13 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.14.0', date: '2026-11-17', items: [
+    '新增「记录」页（与扫描/词库并列）：清单化管理每次导入，显示页码、词数、入库状态、时间，一目了然核对每页导得对不对',
+    '分页管理：每页最多 20 条记录，支持翻页，最终几百页也不卡；顶部汇总导入批次、涉及页码、累计词条',
+    '页码直达：输入页码一键跳到该页所有导入记录并高亮；点击任意记录展开该次导入的单词清单，点单词可跳词库核对',
+    '修复长按操作条闪退：系统补发的右键菜单事件不再误把操作条收起；长按松手后三个按钮（已会/不会/进度）稳定停留',
+    '修复长按偶发不触发：手指轻微抖动不再被当成滚动而取消长按，只有明显滑动才退出',
+  ]},
   { v: '2.13.0', date: '2026-11-17', items: [
     '词库网状呈现：从已入库的派生/同义/反义/辨析关系自动构建词间关系网，不额外识别、不增加流量',
     '词卡底部新增关系区：派生、同义、同族、辨析、反义分类着色，库内词可点击直达，未收录词灰色标注',
@@ -336,6 +343,7 @@ function switchPage(name) {
     b.classList.toggle('active', b.dataset.page === name));
   updateAzVisibility();
   if (name === 'words') resetWordList();
+  if (name === 'records') loadRecords();
   saveUiState();
 }
 
@@ -2214,7 +2222,7 @@ function wordCardHtml(w, i) {
   const isProgress = tags.includes('进度');
   return `<div class="word-card${isProgress ? ' is-progress' : ''}" id="wc-${key}" data-derived="${w.derived_from ? '1' : '0'}"
       oncontextmenu="event.preventDefault();revealRow('${key}')"
-      ontouchstart="startLongPress('${key}',event)" ontouchend="cancelLongPress()" ontouchmove="cancelLongPress()"
+      ontouchstart="startLongPress('${key}',event)" ontouchend="cancelLongPress()" ontouchmove="onPressMove(event)"
       onmousedown="startLongPress('${key}',event)" onmouseup="cancelLongPress()" onmouseleave="cancelLongPress()">
     <div class="word-row">
       <div class="word-swipe">
@@ -2293,35 +2301,57 @@ function jumpToWord(headword) {
 /* ---------------- 长按检测：左滑露出操作条 ---------------- */
 let _pressTimer = null;
 let _swallowNextClick = false;   // 长按松开后紧随的 click 需吞掉，避免误展开/收起
+let _pressPoint = null;          // 按下起点，用于区分"微抖"与"真正滚动"
 function startLongPress(key, ev) {
   cancelLongPress();
+  _pressPoint = ev && ev.touches && ev.touches[0]
+    ? { x: ev.touches[0].clientX, y: ev.touches[0].clientY }
+    : (ev ? { x: ev.clientX, y: ev.clientY } : null);
   _pressTimer = setTimeout(() => {
     _pressTimer = null;
+    _pressPoint = null;
     if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
     // 清除可能已被浏览器选中的文本，杜绝系统"复制/全选"菜单残留
     try { const s = window.getSelection(); if (s) s.removeAllRanges(); } catch (e) {}
     revealRow(key);
   }, 500);
 }
+function onPressMove(ev) {
+  // 手指位移超过阈值才算滚动，才取消长按；轻微抖动不打断
+  if (!_pressPoint || !_pressTimer) return;
+  const p = ev && ev.touches && ev.touches[0] ? ev.touches[0] : ev;
+  if (!p) return;
+  const dx = (p.clientX || 0) - _pressPoint.x, dy = (p.clientY || 0) - _pressPoint.y;
+  if (Math.hypot(dx, dy) > 12) cancelLongPress();
+}
 function cancelLongPress() {
   if (_pressTimer) { clearTimeout(_pressTimer); _pressTimer = null; }
+  _pressPoint = null;
 }
 
 // 展开某行的操作条；再次触发同一行则收起；展开新行时收起旧行
 let _revealedKey = null;
 let _revealTs = 0;
 function revealRow(key) {
-  const prev = _revealedKey && document.getElementById('wc-' + _revealedKey);
-  if (prev) prev.classList.remove('revealed');
-  if (_revealedKey === key) { _revealedKey = null; return; }
   const el = document.getElementById('wc-' + key);
-  if (!el) { _revealedKey = null; return; }
+  if (!el) return;
+  // 幂等：同一行已被长按唤出时，系统补发的 contextmenu / 重复事件不得把它收起。
+  // （这正是"按钮一闪又缩回"的根因：定时器显示后 contextmenu 又调一次，旧逻辑当成"再点同一行"而收起。）
+  if (_revealedKey === key) {
+    el.classList.add('revealed');
+    return;
+  }
+  // 展开新行前先收起旧行
+  if (_revealedKey) {
+    const prev = document.getElementById('wc-' + _revealedKey);
+    if (prev) prev.classList.remove('revealed');
+  }
   el.classList.add('revealed');
   _revealedKey = key;
   _revealTs = Date.now();
   // 长按结束后浏览器会补发一次 click，标记吞掉，避免操作条刚出现就闪退
   _swallowNextClick = true;
-  setTimeout(() => { _swallowNextClick = false; }, 400);
+  setTimeout(() => { _swallowNextClick = false; }, 500);
 }
 function collapseRevealed() {
   if (!_revealedKey) return;
@@ -2445,6 +2475,243 @@ function refreshStudyBadges() {
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+}
+
+/* ============================================================
+ * 导入记录（清单化管理）
+ *  - 数据源 vw_scan_batches：每次识别入库一条记录
+ *  - 列表不带 raw_result（省流量），展开某条时才按需拉取该页词表并缓存
+ *  - 分页每页 20 条；支持按页码跳转定位
+ * ============================================================ */
+const REC_PAGE_SIZE = 20;
+let recordRows = [];            // 全部记录（按页码升序、同页按时间降序）
+let recordPage = 1;             // 当前分页
+let recordFilterPage = null;    // 页码过滤（null=全部）
+let recordRawCache = {};        // batch id -> words[]
+const expandedRecords = new Set();
+
+function fmtRecTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);            // 转北京时间（UTC+8）
+    const b = new Date(d.getTime() + 8 * 3600 * 1000);
+    const p = n => String(n).padStart(2, '0');
+    return `${b.getUTCFullYear()}-${p(b.getUTCMonth() + 1)}-${p(b.getUTCDate())} ${p(b.getUTCHours())}:${p(b.getUTCMinutes())}`;
+  } catch (e) { return String(iso).slice(0, 16); }
+}
+
+async function loadRecords() {
+  const listEl = document.getElementById('recordList');
+  if (!listEl) return;
+  if (cfg.demo) {
+    recordRows = [];
+    renderRecords();
+    return;
+  }
+  listEl.innerHTML = '<div class="rec-loading"><span class="mini-spinner"></span> 加载导入记录…</div>';
+  try {
+    // 只取列表所需字段，不取 raw_result（展开时按需拉取）
+    const sel = 'id,page_no,status,words_found,created_at,error_msg,prev_page_no,partial_words';
+    const url = `${cfg.url}/rest/v1/vw_scan_batches?book_id=eq.${encodeURIComponent(cfg.book)}&select=${sel}&order=page_no.asc,created_at.desc`;
+    const r = await fetchWithRetry(url, { headers: SYNC_HEADERS() }, { label: '加载导入记录' });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`HTTP ${r.status}: ${t.slice(0, 120)}`);
+    }
+    recordRows = await r.json();
+    recordPage = 1;
+    recordFilterPage = null;
+    const ji = document.getElementById('recJumpInput');
+    if (ji) ji.value = '';
+    renderRecords();
+  } catch (e) {
+    listEl.innerHTML = `<div class="rec-empty">导入记录加载失败：${esc(e.message)}<br><button class="btn btn-ghost btn-sm" onclick="loadRecords()">重试</button></div>`;
+  }
+}
+
+function recFilteredRows() {
+  return recordFilterPage == null
+    ? recordRows
+    : recordRows.filter(r => String(r.page_no) === String(recordFilterPage));
+}
+
+function renderRecords() {
+  const statEl = document.getElementById('recStats');
+  const listEl = document.getElementById('recordList');
+  const pagerEl = document.getElementById('recPager');
+  const hintEl = document.getElementById('recFilterHint');
+  if (!listEl) return;
+
+  // 统计：批次数 / 涉及页数 / 累计词数
+  const pages = new Set(recordRows.map(r => r.page_no).filter(p => p != null));
+  const totalWords = recordRows.reduce((s, r) => s + (Number(r.words_found) || 0), 0);
+  if (statEl) statEl.innerHTML =
+    `<div class="rec-stat"><b>${recordRows.length}</b><span>导入批次</span></div>` +
+    `<div class="rec-stat"><b>${pages.size}</b><span>涉及页码</span></div>` +
+    `<div class="rec-stat"><b>${totalWords}</b><span>累计词条</span></div>`;
+
+  const rows = recFilteredRows();
+  const totalPages = Math.max(1, Math.ceil(rows.length / REC_PAGE_SIZE));
+  if (recordPage > totalPages) recordPage = totalPages;
+  if (recordPage < 1) recordPage = 1;
+
+  if (hintEl) {
+    hintEl.innerHTML = recordFilterPage == null
+      ? `共 <b>${rows.length}</b> 条记录 · 每页 ${REC_PAGE_SIZE} 条，点条目查看该页导入的单词`
+      : `已筛选第 <b>${recordFilterPage}</b> 页 · <b>${rows.length}</b> 条记录`;
+  }
+
+  if (!rows.length) {
+    listEl.innerHTML = '<div class="rec-empty">' +
+      (recordFilterPage != null ? `第 ${recordFilterPage} 页还没有导入记录` : '还没有导入记录，去扫描页导入后再来核对吧') + '</div>';
+  } else {
+    const start = (recordPage - 1) * REC_PAGE_SIZE;
+    const slice = rows.slice(start, start + REC_PAGE_SIZE);
+    listEl.innerHTML = slice.map(r => {
+      const st = r.status || '';
+      const badgeCls = st === 'done' ? 'done' : (st === 'detected' ? 'detected' : 'failed');
+      const badgeTxt = st === 'done' ? '已入库' : (st === 'detected' ? '仅识别' : '失败');
+      const open = expandedRecords.has(r.id) ? ' open' : '';
+      const cnt = (st === 'done')
+        ? `${Number(r.words_found) || 0} 个单词<em>已入库</em>`
+        : (st === 'detected' ? '仅识别页码<em>未入库</em>' : esc((r.error_msg || '识别失败').slice(0, 24)));
+      const pg = r.page_no != null ? `P${String(r.page_no).padStart(3, '0')}` : '未定页';
+      return `<div class="rec-item${open}" id="rec-${r.id}" data-id="${r.id}">
+        <div class="rec-head" onclick="toggleRecord('${r.id}')">
+          <div class="rec-page">${pg}<small>页码</small></div>
+          <div class="rec-meta">
+            <div class="rec-count">${cnt}</div>
+            <div class="rec-time">${fmtRecTime(r.created_at)}${r.prev_page_no ? ' · 承接 P' + String(r.prev_page_no).padStart(3, '0') : ''}</div>
+          </div>
+          <span class="rec-badge ${badgeCls}">${badgeTxt}</span>
+          <span class="rec-arrow">›</span>
+        </div>
+        <div class="rec-words" style="display:${expandedRecords.has(r.id) ? 'block' : 'none'}">
+          <div class="rec-words-hd">本页导入的单词（点词可跳转词库）</div>
+          <div class="rec-words-body" id="recw-${r.id}"><span class="rec-word-none">加载中…</span></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // 展开的记录：确保词表已加载并渲染
+    slice.forEach(r => { if (expandedRecords.has(r.id)) renderRecordWords(r.id); });
+  }
+
+  if (pagerEl) {
+    if (recordFilterPage != null || rows.length <= REC_PAGE_SIZE) {
+      pagerEl.innerHTML = '';
+    } else {
+      pagerEl.innerHTML =
+        `<button onclick="recChangePage(-1)" ${recordPage <= 1 ? 'disabled' : ''}>‹ 上一页</button>` +
+        `<span class="rec-pg">第 <b>${recordPage}</b> / ${totalPages} 页</span>` +
+        `<button onclick="recChangePage(1)" ${recordPage >= totalPages ? 'disabled' : ''}>下一页 ›</button>`;
+    }
+  }
+}
+
+function recChangePage(delta) {
+  recordPage += delta;
+  renderRecords();
+  const list = document.getElementById('recordList');
+  if (list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function toggleRecord(id) {
+  if (expandedRecords.has(id)) {
+    expandedRecords.delete(id);
+    const item = document.getElementById('rec-' + id);
+    if (item) {
+      item.classList.remove('open');
+      const body = item.querySelector('.rec-words');
+      if (body) body.style.display = 'none';
+    }
+    return;
+  }
+  expandedRecords.add(id);
+  const item = document.getElementById('rec-' + id);
+  if (item) {
+    item.classList.add('open');
+    const body = item.querySelector('.rec-words');
+    if (body) body.style.display = 'block';
+  }
+  await renderRecordWords(id);
+}
+
+async function renderRecordWords(id) {
+  const host = document.getElementById('recw-' + id);
+  if (!host) return;
+  if (recordRawCache[id] == null) {
+    try {
+      const url = `${cfg.url}/rest/v1/vw_scan_batches?id=eq.${encodeURIComponent(id)}&select=raw_result`;
+      const r = await fetchWithRetry(url, { headers: SYNC_HEADERS() }, { label: '加载该页词表' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const arr = await r.json();
+      const rr = arr && arr[0] && arr[0].raw_result;
+      recordRawCache[id] = (rr && Array.isArray(rr.words)) ? rr.words : [];
+    } catch (e) {
+      host.innerHTML = `<span class="rec-word-none">加载失败：${esc(e.message)} <button class="btn btn-ghost btn-sm" onclick="retryRecordWords('${id}')">重试</button></span>`;
+      return;
+    }
+  }
+  const words = recordRawCache[id];
+  if (!words.length) {
+    host.innerHTML = '<span class="rec-word-none">该条记录没有入库词条（仅识别页码或识别失败）</span>';
+    return;
+  }
+  host.innerHTML = words.map(w => {
+    const hw = w.headword || w.word || '';
+    let def = '';
+    const ss = w.senses || [];
+    if (ss.length) {
+      const s0 = ss[0] || {};
+      def = s0.chinese_def || s0.def || s0.english_def || '';
+    }
+    if (!def && w.inline_def) def = w.inline_def;
+    return `<div class="rec-word" onclick="recWordJump('${esc(hw).replace(/'/g, "\\'")}')" title="跳转到词库中的 ${esc(hw)}">
+      <b>${esc(hw)}</b><span>${esc(String(def).slice(0, 22))}</span></div>`;
+  }).join('');
+}
+
+function retryRecordWords(id) {
+  delete recordRawCache[id];
+  renderRecordWords(id);
+}
+
+function recWordJump(headword) {
+  switchPage('words');
+  setTimeout(() => { if (typeof jumpToWord === 'function') jumpToWord(headword); }, 120);
+}
+
+function jumpToRecordPage() {
+  const inp = document.getElementById('recJumpInput');
+  const v = (inp && inp.value || '').trim();
+  if (!v || !/^\d+$/.test(v)) { toast('请输入有效的页码数字'); return; }
+  const pg = Number(v);
+  if (!recordRows.length) { toast('暂无导入记录'); return; }
+  // 在全部记录里找该页第一条（列表按页码升序，第一条即最早导入）
+  const idx = recordRows.findIndex(r => String(r.page_no) === String(pg));
+  if (idx < 0) { toast(`第 ${pg} 页还没有导入记录`); return; }
+  recordFilterPage = pg;
+  recordPage = 1;
+  const row = recordRows[idx];
+  if (row.status === 'done') expandedRecords.add(row.id);
+  renderRecords();
+  setTimeout(() => {
+    const item = document.getElementById('rec-' + row.id);
+    if (item) {
+      item.classList.add('focus-flash');
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => item.classList.remove('focus-flash'), 1800);
+    }
+  }, 80);
+}
+
+function resetRecordFilter() {
+  recordFilterPage = null;
+  recordPage = 1;
+  const ji = document.getElementById('recJumpInput');
+  if (ji) ji.value = '';
+  renderRecords();
 }
 
 /* ---------------- 初始化 ---------------- */
