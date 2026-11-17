@@ -115,8 +115,9 @@ input[type=file]{display:none}
 .tag-chip.active[data-tag="已掌握"]{background:#16a34a}
 .tag-chip.active:not([data-tag="__all__"]):not([data-tag="不会"]):not([data-tag="不熟"]):not([data-tag="已掌握"]){background:#7c3aed}
 
-.list-summary{font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0}
-.list-summary b{color:var(--primary-d);font-size:14px}
+.list-summary{font-size:13px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums}
+.list-summary b{color:var(--primary-d);font-size:17px;font-weight:800}
+.list-summary .frac-sep{color:#b9c0cc;margin:0 2px;font-size:14px}
 
 /* 书本纸张风格容器 */
 .book-list{background:linear-gradient(#fffdf8,#fffaf0);border:1px solid #e9dfc8;
@@ -372,7 +373,7 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
   <h1>单词扫描 · 背词器</h1>
   <div class="sub">
     <span id="modeBadge" class="mode-badge demo">演示模式</span>
-    <span id="headerVersion" class="version-mini">v2.1.2</span>
+    <span id="headerVersion" class="version-mini">v2.1.3</span>
     <span id="headerSub">拍照上传 · 扫描拆解 · 查询词库</span>
   </div>
 </header>
@@ -381,7 +382,7 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
 <section class="page active" id="page-scan">
   <div class="version-card">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.1.2</span>
+      <span class="version-badge" id="versionBadge">v2.1.3</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
@@ -447,7 +448,7 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input type="text" id="searchInput" placeholder="搜索英文单词或中文释义…" oninput="onSearchChange()">
     </div>
-    <div class="list-summary" id="listSummary">共 <b>0</b> 词</div>
+    <div class="list-summary" id="listSummary"><b>0</b><span class="frac-sep">/</span>0</div>
   </div>
   <div class="tag-filter" id="tagFilter"></div>
   <div id="wordList" class="book-list"></div>
