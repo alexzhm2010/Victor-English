@@ -17,6 +17,10 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.4', date: '2026-11-17', items: [
+    '页眉改为「维克多背单词」，只保留版本号',
+    '滚动时页眉滑出、搜索框吸顶锁定，列表继续滚动',
+  ]},
   { v: '2.1.3', date: '2026-11-17', items: [
     '搜索结果数改为分数形式（搜索数/总数），表头更简洁',
   ]},
@@ -138,11 +142,15 @@ function toggleDemo() {
 }
 function applyMode() {
   const badge = document.getElementById('modeBadge');
-  badge.textContent = cfg.demo ? '演示模式' : '在线模式';
-  badge.className = 'mode-badge' + (cfg.demo ? ' demo' : '');
-  document.getElementById('headerSub').textContent =
+  if (badge) {
+    badge.textContent = cfg.demo ? '演示模式' : '在线模式';
+    badge.className = 'mode-badge' + (cfg.demo ? ' demo' : '');
+  }
+  const sub = document.getElementById('headerSub');
+  if (sub) sub.textContent =
     cfg.demo ? '内置样例 · 数据存本机' : (cfg.url ? cfg.url.replace(/^https?:\/\//,'') : '未配置 Supabase');
-  document.getElementById('scanHint').style.display = cfg.demo ? 'block' : 'none';
+  const hint = document.getElementById('scanHint');
+  if (hint) hint.style.display = cfg.demo ? 'block' : 'none';
 }
 function setStatus(msg, type) {
   const el = document.getElementById('statusLine');
