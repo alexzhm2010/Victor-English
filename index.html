@@ -230,6 +230,15 @@ input[type=file]{display:none}
   padding:2px 6px;border-radius:5px}
 .note-title{font-weight:700;color:#1e3a8a;margin-bottom:3px}
 .note-line{margin:2px 0;line-height:1.5}
+/* 不同蓝底标签框的专属配色（贴近书本：高考链接为醒目蓝框） */
+.vw-note.note-高考链接{background:linear-gradient(135deg,#e0edff,#eef4ff);border-color:#a9c8ef}
+.vw-note.note-高考链接 .note-badge{background:#1d4ed8}
+.vw-note.note-高考链接 .note-title{color:#1e40af}
+.vw-note.note-辨 .note-badge{background:#7c3aed}
+.vw-note.note-同 .note-badge{background:#0891b2}
+.vw-note.note-反 .note-badge{background:#db2777}
+.vw-note.note-句型 .note-badge{background:#ea580c}
+.vw-note .note-body .note-line{position:relative}
 .word-card[data-derived="1"] .word-name{color:#6d28d9}
 .item{margin:3px 0 3px 26px;font-size:13px}
 .item .en{font-family:Georgia,serif;font-style:italic;color:#26303d}
@@ -313,6 +322,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   font-size:11px;color:#166534;margin-top:4px;border-radius:4px}
 .boundary-note.partial{background:#fffbeb;border-left-color:#f59e0b;color:#92400e}
 .boundary-note.recorded{background:#f1f5f9;border-left-color:#94a3b8;color:#475569}
+.boundary-note.done{background:#f0fdf4;border-left-color:var(--green);color:#166534;font-weight:600}
 .pg-wrap{display:inline-flex;align-items:center;gap:2px;background:#eef2ff;color:#4338ca;
   font-size:11px;font-weight:700;padding:1px 4px 1px 6px;border-radius:6px}
 .pg-input{width:34px;border:none;background:transparent;color:#4338ca;font-size:12px;
@@ -473,7 +483,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
 <header>
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
-  <span id="headerVersion" class="version-mini">v2.3.0</span>
+  <span id="headerVersion" class="version-mini">v2.4.0</span>
 </header>
 
 <!-- ============ 桌面端左侧导航（手机端隐藏） ============ -->
@@ -494,7 +504,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
       <span>设置</span>
     </button>
   </nav>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.3.0</b></div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.4.0</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -542,7 +552,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
   <div class="version-card" id="versionCard">
     <div class="version-head">
-      <span class="version-badge" id="versionBadge">v2.3.0</span>
+      <span class="version-badge" id="versionBadge">v2.4.0</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
     </div>
     <div class="version-latest" id="versionLatest"></div>
