@@ -48,6 +48,41 @@ header h1 .brand-mark{width:28px;height:28px;border-radius:9px;background:rgba(2
 .version-mini{font-size:10.5px;padding:3px 9px;border-radius:9px;background:rgba(255,255,255,.2);
   border:1px solid rgba(255,255,255,.28);font-weight:700;letter-spacing:.3px;flex-shrink:0}
 
+/* ---------- 同步码 ---------- */
+.header-right{display:flex;align-items:center;gap:7px}
+.sync-chip{font-size:10.5px;padding:3px 9px;border-radius:9px;background:rgba(255,255,255,.2);
+  border:1px solid rgba(255,255,255,.32);font-weight:700;color:#fff;cursor:pointer;
+  max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sync-chip.super{background:rgba(245,158,11,.9);border-color:#fde68a}
+.sync-chip:active{filter:brightness(.9)}
+/* 同步码门禁弹框：禁止点遮罩关闭（未登录不能进） */
+#syncGate .modal{max-width:360px}
+.sync-input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:11px 13px;
+  font-size:16px;font-family:inherit;outline:none;background:#fafbfd;letter-spacing:1px;text-align:center}
+.sync-input:focus{border-color:var(--primary)}
+.sync-err{color:#dc2626;font-size:12px;min-height:16px;text-align:center;margin-top:6px}
+.sync-hint{font-size:11px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.6}
+/* 同步码管理列表（设置页，仅超级码可见） */
+.code-manage{background:var(--card);border-radius:14px;padding:6px 15px;box-shadow:var(--shadow);margin-top:18px}
+.code-manage h3{font-size:14px;margin:12px 0 4px;color:var(--primary-d)}
+.code-desc{font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6}
+.code-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)}
+.code-row:last-of-type{border-bottom:none}
+.code-row .code-val{font-family:ui-monospace,monospace;font-weight:800;font-size:13px;color:#1d3f7a;min-width:74px}
+.code-row .code-note{flex:1;font-size:12px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.code-row .code-super{font-size:9px;font-weight:700;background:#fef3c7;color:#b45309;padding:1px 6px;border-radius:6px;flex-shrink:0}
+.code-row .code-me{font-size:9px;font-weight:700;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:6px;flex-shrink:0}
+.code-del{border:none;background:#fee2e2;color:#b91c1c;border-radius:7px;width:26px;height:26px;
+  font-size:15px;cursor:pointer;flex-shrink:0;line-height:1}
+.code-add{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.code-add input{border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:13px;
+  font-family:inherit;outline:none;background:#fafbfd}
+.code-add input:focus{border-color:var(--primary)}
+.code-add input.c-code{width:110px}
+.code-add input.c-note{flex:1;min-width:120px}
+.code-add label{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer}
+.hidden-soft{display:none !important}
+
 /* ---------- 桌面端左侧导航（≥1024px 显示，手机端隐藏） ---------- */
 .sidebar{display:none;position:fixed;top:0;left:0;bottom:0;width:var(--sidebar-w);z-index:35;
   flex-direction:column;padding:22px 14px;background:var(--glass);border-right:1px solid var(--border,rgba(148,180,210,.32));
@@ -69,8 +104,14 @@ header h1 .brand-mark{width:28px;height:28px;border-radius:9px;background:rgba(2
   min-width:18px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 5px}
 .sidebar .side-nav .side-badge.show{display:inline-flex}
 .sidebar .side-nav button.active .side-badge{background:rgba(255,255,255,.28)}
-.side-foot{margin-top:auto;padding:14px 8px 2px;border-top:1px solid var(--line);
-  font-size:11px;color:var(--muted);text-align:center}
+.side-sync{margin-top:auto;display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+  padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.5);
+  cursor:pointer;font-size:11px;color:var(--muted)}
+.side-sync:hover{background:rgba(226,240,252,.6)}
+.side-sync-label{width:100%;font-size:10px}
+.side-sync-code{font-family:ui-monospace,monospace;font-weight:800;font-size:13px;color:#1d3f7a}
+.side-sync-edit{margin-left:auto;color:var(--primary);font-weight:700}
+.side-foot{padding:12px 8px 2px;font-size:11px;color:var(--muted);text-align:center}
 .side-foot b{color:var(--primary);font-weight:800}
 
 /* ---------- 版本记录（设置页内） ---------- */
@@ -539,7 +580,10 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
 <header>
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
-  <span id="headerVersion" class="version-mini">v2.8.0</span>
+  <div class="header-right">
+    <span id="syncChip" class="sync-chip" onclick="openSyncGate(true)">同步码</span>
+    <span id="headerVersion" class="version-mini">v2.9.0</span>
+  </div>
 </header>
 
 <!-- ============ 桌面端左侧导航（手机端隐藏） ============ -->
@@ -560,7 +604,12 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
       <span>设置</span>
     </button>
   </nav>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.8.0</b></div>
+  <div class="side-sync" id="sideSync" onclick="openSyncGate(true)">
+    <span class="side-sync-label">当前同步码</span>
+    <span class="side-sync-code" id="sideSyncCode">—</span>
+    <span class="side-sync-edit">切换 ›</span>
+  </div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.9.0</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -649,9 +698,22 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   </div>
   <div class="status-line" id="statusLine"></div>
 
+  <div class="code-manage hidden-soft" id="codeManage">
+    <h3>同步码管理</h3>
+    <div class="code-desc">每个同步码对应一份独立的学习进度（已会 / 不会 / 进度）。普通码只能进入词库；超级码可进入扫描页与设置页。超级码 663798 不可删除。</div>
+    <div id="codeList"></div>
+    <div class="code-add">
+      <input class="c-code" id="newCode" inputmode="numeric" placeholder="同步码（数字）">
+      <input class="c-note" id="newCodeNote" placeholder="备注（如：张三 / 备用）">
+      <label><input type="checkbox" id="newCodeSuper"> 超级码</label>
+      <button class="btn btn-primary btn-sm" onclick="addSyncCode()">添加</button>
+    </div>
+    <div class="status-line" id="codeStatus"></div>
+  </div>
+
   <div class="version-card" id="versionCard">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.8.0</span>
+      <span class="version-badge" id="versionBadge">v2.9.0</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
@@ -682,6 +744,25 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 <div class="az-index" id="azIndex" aria-label="字母索引">
   <div class="az-bubble" id="azBubble">A</div>
   <div id="azLetters"></div>
+</div>
+
+<!-- 同步码门禁：进入前必须输入有效同步码 -->
+<div class="modal-mask show" id="syncGate">
+  <div class="modal">
+    <div class="modal-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <div class="modal-title" id="syncGateTitle">输入同步码</div>
+    <div class="modal-desc" id="syncGateDesc">输入你的同步码，进入属于你的词库与学习进度。</div>
+    <input type="text" class="sync-input" id="syncInput" inputmode="numeric" autocomplete="off"
+      placeholder="请输入同步码" onkeydown="if(event.key==='Enter'){event.preventDefault();submitSyncCode()}">
+    <div class="sync-err" id="syncErr"></div>
+    <div class="modal-choices">
+      <button class="btn btn-primary" id="syncGateBtn" onclick="submitSyncCode()">进入</button>
+    </div>
+    <div class="modal-cancel hidden-soft" id="syncGateCancel" onclick="closeSyncGate()">取消（保持当前同步码）</div>
+    <div class="sync-hint" id="syncGateHint">同步码由管理员在「设置 → 同步码管理」中创建</div>
+  </div>
 </div>
 
 <!-- 扫描进度提示弹框 -->
