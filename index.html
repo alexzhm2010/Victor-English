@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#2b5c9e">
+<title>单词扫描 · 背词器</title>
+<style>
+:root{
+  --primary:#2b5c9e; --primary-d:#173a6b; --primary-l:#eaf1fb;
+  --accent:#e0513a; --green:#1f9d55; --bg:#f2f4f8; --card:#fff;
+  --text:#1f2733; --muted:#7a8597; --line:#e6eaf0; --shadow:0 2px 12px rgba(20,50,90,.07);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.55;padding-bottom:74px}
+header{position:sticky;top:0;z-index:20;background:linear-gradient(135deg,var(--primary),var(--primary-d));
+  color:#fff;padding:16px 18px 14px;box-shadow:0 2px 10px rgba(23,58,107,.25)}
+header h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.5px}
+header .sub{font-size:12px;opacity:.85;margin-top:2px;display:flex;align-items:center;gap:6px}
+.mode-badge{font-size:11px;padding:1px 8px;border-radius:10px;background:rgba(255,255,255,.2)}
+.mode-badge.demo{background:#f0a500;color:#4a3000}
+.version-mini{font-size:10.5px;padding:1px 7px;border-radius:10px;background:rgba(255,255,255,.22);
+  font-weight:700;letter-spacing:.3px}
+
+/* ---------- 版本卡片（首页顶部） ---------- */
+.version-card{background:var(--card);border-radius:12px;padding:11px 13px;margin-bottom:12px;
+  box-shadow:var(--shadow);border-left:3px solid var(--green)}
+.version-head{display:flex;align-items:center;gap:8px;cursor:pointer}
+.version-badge{background:var(--green);color:#fff;font-size:12px;font-weight:800;
+  padding:2px 9px;border-radius:8px;letter-spacing:.3px}
+.version-date{font-size:11px;color:var(--muted);flex:1}
+.version-toggle{font-size:11px;color:var(--primary);font-weight:600;white-space:nowrap}
+.version-latest{margin-top:7px}
+.vitem{font-size:12px;color:#166534;line-height:1.6;padding-left:2px}
+.version-history{display:none;margin-top:10px;padding-top:9px;border-top:1px dashed var(--line)}
+.version-history.open{display:block}
+.vrel{margin-bottom:9px;font-size:11px}
+.vrel-v{font-weight:800;color:var(--primary-d)}
+.vrel-date{color:var(--muted);margin-left:6px}
+.vrel-items{color:var(--muted);line-height:1.6;margin-top:2px}
+
+.page{display:none;padding:16px 14px 10px;max-width:640px;margin:0 auto}
+.page.active{display:block}
+
+/* ---------- 扫描页 ---------- */
+.upload-zone{background:var(--card);border:2px dashed #b9c8dd;border-radius:16px;
+  padding:34px 18px;text-align:center;box-shadow:var(--shadow);transition:.2s}
+.upload-zone.drag{border-color:var(--primary);background:var(--primary-l)}
+.upload-icon{width:58px;height:58px;margin:0 auto 12px;background:var(--primary-l);
+  border-radius:50%;display:flex;align-items:center;justify-content:center}
+.upload-icon svg{width:30px;height:30px;stroke:var(--primary)}
+.upload-zone h2{font-size:16px;margin:0 0 6px}
+.upload-zone p{font-size:13px;color:var(--muted);margin:0 0 18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;
+  border-radius:11px;padding:12px 22px;font-size:15px;font-weight:600;cursor:pointer;
+  transition:.15s;font-family:inherit}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-ghost{background:var(--primary-l);color:var(--primary)}
+.btn-accent{background:var(--accent);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-sm{padding:8px 14px;font-size:13px;border-radius:9px}
+.btn-row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+input[type=file]{display:none}
+
+.preview-box{margin-top:16px;background:var(--card);border-radius:14px;overflow:hidden;
+  box-shadow:var(--shadow);display:none}
+.preview-box.show{display:block}
+.preview-box img{width:100%;max-height:320px;object-fit:contain;display:block;background:#eef1f5}
+.preview-meta{padding:12px 14px;font-size:13px;color:var(--muted);
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+.progress{margin-top:16px;display:none}
+.progress.show{display:block}
+.progress-bar{height:8px;background:#e3e8f0;border-radius:8px;overflow:hidden}
+.progress-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--primary),var(--green));
+  border-radius:8px;transition:width .4s}
+.progress-label{font-size:12px;color:var(--muted);margin-top:6px;text-align:center}
+
+.result-card{margin-top:16px;background:var(--card);border-radius:14px;padding:16px;
+  box-shadow:var(--shadow);display:none}
+.result-card.show{display:block}
+.result-head{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--green);font-size:15px}
+.result-stats{display:flex;gap:8px;margin:12px 0;flex-wrap:wrap}
+.result-stats span{background:var(--primary-l);color:var(--primary);font-size:12px;
+  padding:4px 10px;border-radius:8px}
+.chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{background:#f0f3f8;border:1px solid var(--line);border-radius:8px;padding:3px 9px;font-size:13px;color:var(--primary-d)}
+
+.hint{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.7}
+.hint b{color:var(--text)}
+
+/* ---------- 词库页（仿书本 · 单列无限滚动） ---------- */
+.searchbar{position:relative;margin-bottom:10px}
+.search-wrap{position:relative}
+.searchbar input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px 12px 40px;
+  font-size:15px;background:var(--card);box-shadow:var(--shadow);font-family:inherit;outline:none}
+.searchbar input:focus{border-color:var(--primary)}
+.searchbar svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);
+  width:18px;height:18px;stroke:var(--muted)}
+
+/* 标签快捷筛选 */
+.tag-filter{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+.tag-chip{border:1px solid var(--line);background:var(--card);border-radius:16px;
+  padding:5px 12px;font-size:12px;font-family:inherit;cursor:pointer;color:var(--muted);
+  display:inline-flex;align-items:center;gap:4px;transition:.15s}
+.tag-chip .dot{width:8px;height:8px;border-radius:50%}
+.tag-chip.active{border-color:transparent;color:#fff;font-weight:700}
+.tag-chip.active[data-tag="__all__"]{background:var(--primary-d)}
+.tag-chip.active[data-tag="不会"]{background:#dc2626}
+.tag-chip.active[data-tag="不熟"]{background:#ea580c}
+.tag-chip.active[data-tag="已掌握"]{background:#16a34a}
+.tag-chip.active:not([data-tag="__all__"]):not([data-tag="不会"]):not([data-tag="不熟"]):not([data-tag="已掌握"]){background:#7c3aed}
+
+.book-tip{font-size:11.5px;color:#92600e;background:#fff8e6;border:1px solid #ffe08a;
+  border-radius:9px;padding:7px 11px;margin-bottom:10px;line-height:1.5}
+.list-summary{font-size:12px;color:var(--muted);margin:2px 2px 8px}
+
+/* 书本纸张风格容器 */
+.book-list{background:linear-gradient(#fffdf8,#fffaf0);border:1px solid #e9dfc8;
+  border-radius:10px;padding:4px 14px;box-shadow:0 2px 14px rgba(90,70,30,.07)}
+.scroll-sentinel{text-align:center;color:var(--muted);font-size:12px;padding:14px 0 4px;min-height:20px}
+.scroll-sentinel.hidden{display:none}
+
+/* 词条：词头一行（深蓝加粗）+ 音标斜体 */
+.word-card{border-bottom:1px solid #ece2cc;padding:11px 2px}
+.word-card:last-child{border-bottom:none}
+.word-hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;cursor:pointer;position:relative}
+.word-hd:active{opacity:.7}
+.word-name{font-family:Georgia,"Times New Roman",serif;font-size:20px;font-weight:800;
+  color:#1d3f7a;letter-spacing:.2px}
+.word-ph{font-family:Georgia,serif;color:#8a7f6d;font-size:13px;font-style:italic}
+.word-def{flex:1;font-size:13px;color:#7a6f5c;text-align:right;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.level{font-size:10px;color:#6b21a8;background:#f3e8ff;padding:1px 6px;border-radius:6px}
+.arrow{width:14px;stroke:#b0a58f;transition:transform .2s;flex-shrink:0;align-self:center}
+.word-card.open .arrow{transform:rotate(90deg)}
+.edit-btn{border:none;background:transparent;color:#b0a58f;font-size:14px;cursor:pointer;
+  padding:2px 4px;align-self:center;flex-shrink:0}
+.edit-btn:active{color:var(--primary)}
+.word-body{display:none;padding:6px 0 6px 8px}
+.word-card.open .word-body{display:block}
+
+/* 学习标签徽标（词头旁，不同颜色） */
+.study-tag{font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap}
+.study-tag.不会{background:#fee2e2;color:#b91c1c}
+.study-tag.不熟{background:#ffedd5;color:#c2410c}
+.study-tag.已掌握{background:#dcfce7;color:#15803d}
+.study-tag.custom{background:#ede9fe;color:#6d28d9}
+
+/* 义项：实心圆序号 + 彩色词性 */
+.sense{padding:8px 0 3px;border-bottom:1px dashed #e6dcc4}
+.sense:last-child{border-bottom:none}
+.sense-hd{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin-bottom:4px}
+.no{width:19px;height:19px;background:#1d3f7a;color:#fff;border-radius:50%;
+  font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.pos{color:#c0392b;font-style:italic;font-size:13px;font-weight:700}
+.def{font-weight:600;font-size:14px;color:#243247}
+.tag{font-size:10px;padding:1px 6px;border-radius:7px}
+.tag-count{background:#e0e7ff;color:#3730a3}
+.tag-usage{background:#fef3c7;color:#92400e}
+.tag-anto{background:#dcfce7;color:#166534}
+/* v2 新增：身份符号 / 词频 / 派生 / 义项频次 / 英释 / 蓝底标签框 */
+.no-high{background:#dc2626}            /* 高频义：深红实心序号 */
+.no-low{background:#fca5a5;color:#7f1d1d} /* 低频义：浅色序号 */
+.tag-freq{background:#fee2e2;color:#b91c1c}
+.tag-identity{font-weight:700}
+.id-\*{background:#f1f5f9;color:#475569}
+.id-⊕{background:#dbeafe;color:#1d4ed8}
+.id-⊖{background:#fee2e2;color:#991b1b}
+.id-derived{background:#ede9fe;color:#5b21b6}
+.tag-freqlevel{background:#ccfbf1;color:#0f766e;font-weight:700}
+.tag-derived{background:#f5f3ff;color:#6d28d9}
+.eng-def{font-family:Georgia,serif;font-style:italic;font-size:12px;color:#64748b;margin:2px 0 4px 26px}
+.vw-note{position:relative;margin:8px 0 4px 8px;padding:8px 10px 8px 42px;background:linear-gradient(135deg,#eef2ff,#f8fafc);
+  border:1px solid #e0e7ff;border-radius:8px;font-size:12.5px;color:#334155}
+.note-badge{position:absolute;left:8px;top:8px;background:#2563eb;color:#fff;font-size:11px;font-weight:700;
+  padding:2px 6px;border-radius:5px}
+.note-title{font-weight:700;color:#1e3a8a;margin-bottom:3px}
+.note-line{margin:2px 0;line-height:1.5}
+.word-card[data-derived="1"] .word-name{color:#6d28d9}
+.item{margin:3px 0 3px 26px;font-size:13px}
+.item .en{font-family:Georgia,serif;font-style:italic;color:#26303d}
+.item .zh{color:#5b6675;margin-left:5px}
+.item.src-wrap .src{font-size:10px;color:var(--accent);background:#fff1f2;padding:0 5px;border-radius:5px;margin-left:5px}
+.gloss{color:var(--muted);font-size:11px}
+.kind{font-size:9px;color:#94a3b8;border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-right:4px}
+.empty{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty svg{width:54px;height:54px;stroke:#c3ccda;margin-bottom:12px}
+
+/* ---------- 设置页 ---------- */
+.settings{background:var(--card);border-radius:14px;padding:6px 15px;box-shadow:var(--shadow)}
+.field{padding:13px 0;border-bottom:1px solid var(--line)}
+.field:last-child{border-bottom:none}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.field .desc{font-size:11px;color:var(--muted);margin-top:4px}
+.field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+  font-size:13px;font-family:inherit;outline:none;background:#fafbfd}
+.field input:focus{border-color:var(--primary)}
+.switch-row{display:flex;align-items:center;justify-content:space-between}
+.switch{position:relative;width:46px;height:26px;background:#cbd5e1;border-radius:20px;
+  cursor:pointer;transition:.2s;flex-shrink:0}
+.switch.on{background:var(--green)}
+.switch i{position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;
+  border-radius:50%;transition:.2s}
+.switch.on i{left:23px}
+.save-bar{margin-top:16px;text-align:center}
+.status-line{font-size:12px;margin-top:10px;text-align:center;min-height:18px}
+.status-line.ok{color:var(--green)} .status-line.err{color:var(--accent)}
+.about{margin-top:18px;font-size:11px;color:var(--muted);line-height:1.8;text-align:center}
+.about code{background:#e8ecf3;padding:1px 5px;border-radius:4px;font-size:10px}
+
+/* ---------- 底部导航 ---------- */
+nav{position:fixed;bottom:0;left:0;right:0;height:64px;background:#fff;
+  box-shadow:0 -2px 14px rgba(20,50,90,.08);display:flex;z-index:30;
+  padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:none;background:none;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;color:var(--muted);font-size:11px;
+  font-family:inherit;cursor:pointer}
+nav button.active{color:var(--primary);font-weight:700}
+nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
+.badge-count{position:absolute;top:8px;right:calc(33% - 18px);background:var(--accent);
+  color:#fff;font-size:9px;min-width:16px;height:16px;border-radius:8px;
+  display:none;align-items:center;justify-content:center;padding:0 4px}
+.badge-count.show{display:flex}
+
+.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%) translateY(-10px);
+  background:#1f2733;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;
+  z-index:50;opacity:0;transition:.25s;pointer-events:none;max-width:88%;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- 批量扫描 ---------- */
+.tip-bar{background:#fff8e6;border:1px solid #ffe08a;border-radius:10px;padding:10px 12px;
+  font-size:12px;color:#7a5b00;line-height:1.6;margin-bottom:12px}
+.batch-list{margin-top:14px}
+.batch-item{background:var(--card);border-radius:11px;padding:10px 12px;margin-bottom:8px;
+  box-shadow:var(--shadow);display:flex;align-items:center;gap:10px}
+.batch-thumb{width:42px;height:52px;object-fit:cover;border-radius:6px;background:#eef1f5;flex-shrink:0}
+.batch-info{flex:1;min-width:0}
+.batch-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.batch-status{font-size:11px;color:var(--muted);margin-top:2px}
+.batch-status.pending{color:#94a3b8}
+.batch-status.uploading{color:#2563eb}
+.batch-status.parsing{color:#9333ea}
+.batch-status.done{color:var(--green)}
+.batch-status.error{color:var(--accent)}
+.batch-status.retry{cursor:pointer;text-decoration:underline}
+.batch-status.recorded{color:#64748b;font-weight:600}
+.batch-del{border:none;background:#f1f5f9;color:#94a3b8;width:24px;height:24px;
+  border-radius:50%;font-size:15px;cursor:pointer;flex-shrink:0;line-height:1}
+.batch-head{display:flex;justify-content:space-between;align-items:center;margin:14px 2px 4px}
+.batch-head b{font-size:13px}
+.batch-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.mini-spinner{display:inline-block;width:11px;height:11px;border:2px solid #d8b4fe;
+  border-top-color:#9333ea;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.boundary-note{background:#f0fdf4;border-left:3px solid var(--green);padding:6px 10px;
+  font-size:11px;color:#166534;margin-top:4px;border-radius:4px}
+.boundary-note.partial{background:#fffbeb;border-left-color:#f59e0b;color:#92400e}
+.boundary-note.recorded{background:#f1f5f9;border-left-color:#94a3b8;color:#475569}
+.pg-wrap{display:inline-flex;align-items:center;gap:2px;background:#eef2ff;color:#4338ca;
+  font-size:11px;font-weight:700;padding:1px 4px 1px 6px;border-radius:6px}
+.pg-input{width:34px;border:none;background:transparent;color:#4338ca;font-size:12px;
+  font-weight:700;padding:0;text-align:center;outline:none;-moz-appearance:textfield}
+.pg-input::-webkit-inner-spin-button,.pg-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.pg-tag{background:#eef2ff;color:#4338ca;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px}
+.partial-tag{font-size:10px;color:#b45309;background:#fef3c7;padding:1px 6px;border-radius:6px;
+  white-space:nowrap;font-weight:600}
+.last-progress{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;border-radius:9px;
+  padding:9px 12px;font-size:12.5px;font-weight:600;margin-bottom:10px;text-align:center}
+/* 扫描进度提示弹框 */
+.modal-mask{position:fixed;inset:0;background:rgba(15,23,42,.48);display:none;
+  align-items:center;justify-content:center;z-index:100;padding:24px}
+.modal-mask.show{display:flex}
+.modal{background:var(--card);width:100%;max-width:340px;border-radius:16px;padding:22px 20px;
+  box-shadow:0 20px 50px rgba(0,0,0,.25);animation:pop .18s ease-out}
+@keyframes pop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-icon{width:46px;height:46px;border-radius:50%;background:#eff6ff;display:flex;
+  align-items:center;justify-content:center;margin:0 auto 12px;color:#2563eb}
+.modal-icon svg{width:26px;height:26px}
+.modal-title{font-size:17px;font-weight:800;text-align:center;color:#1e293b;margin-bottom:8px}
+.modal-highlight{color:#dc2626;font-weight:800}
+.modal-desc{font-size:12.5px;color:var(--muted);line-height:1.7;text-align:center;margin-bottom:16px}
+.modal-choices{display:flex;flex-direction:column;gap:9px}
+.modal-choice{border:1.5px solid #e2e8f0;background:#fff;border-radius:11px;padding:11px 13px;
+  text-align:left;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:10px}
+.modal-choice:active{transform:scale(.98)}
+.modal-choice.primary{border-color:#2563eb;background:#eff6ff}
+.modal-choice.repeat{border-color:#f59e0b;background:#fffbeb}
+.modal-choice b{display:block;font-size:13.5px;color:#1e293b}
+.modal-choice small{display:block;font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5}
+.modal-choice .ci{font-size:20px;flex-shrink:0}
+.modal-cancel{text-align:center;font-size:12px;color:var(--muted);margin-top:13px;cursor:pointer;padding:6px}
+
+/* ---------- 自定义相机（连续拍照） ---------- */
+.cam-mask{position:fixed;inset:0;background:#000;display:none;z-index:120;
+  flex-direction:column}
+.cam-mask.show{display:flex}
+.cam-top{position:absolute;top:0;left:0;right:0;z-index:3;padding:14px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  background:linear-gradient(rgba(0,0,0,.55),transparent)}
+.cam-count{color:#fff;font-size:13px;font-weight:700;background:rgba(0,0,0,.4);
+  padding:5px 11px;border-radius:12px}
+.cam-close{border:none;background:rgba(255,255,255,.18);color:#fff;width:34px;height:34px;
+  border-radius:50%;font-size:19px;cursor:pointer;line-height:1}
+#camVideo{width:100%;height:100%;object-fit:cover;display:block}
+.cam-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:2}
+.cam-flash.flash{animation:camflash .28s ease-out}
+@keyframes camflash{0%{opacity:.75}100%{opacity:0}}
+.cam-bottom{position:absolute;bottom:0;left:0;right:0;z-index:3;padding:18px 20px calc(20px + env(safe-area-inset-bottom));
+  background:linear-gradient(transparent,rgba(0,0,0,.7));display:flex;
+  flex-direction:column;align-items:center;gap:12px}
+.cam-status{color:#e8ecf3;font-size:12px;text-align:center}
+.cam-shutter{width:72px;height:72px;border-radius:50%;border:4px solid #fff;
+  background:rgba(255,255,255,.25);cursor:pointer;position:relative;transition:.12s}
+.cam-shutter:active{transform:scale(.92)}
+.cam-shutter::after{content:"";position:absolute;inset:5px;border-radius:50%;background:#fff}
+.cam-done{border:none;background:rgba(255,255,255,.2);color:#fff;font-size:13px;
+  font-weight:700;padding:9px 26px;border-radius:20px;cursor:pointer;font-family:inherit}
+.cam-done:active{transform:scale(.97)}
+
+/* ---------- 单页操作按钮 ---------- */
+.batch-run{border:none;background:var(--primary-l);color:var(--primary);font-size:12px;
+  font-weight:700;padding:6px 10px;border-radius:8px;cursor:pointer;font-family:inherit;flex-shrink:0}
+.batch-run:active{transform:scale(.95)}
+.batch-run.retry{background:#fee2e2;color:#b91c1c}
+.batch-run:disabled{opacity:.5;cursor:not-allowed}
+
+/* ---------- 长按编辑弹框 ---------- */
+.editor-mask{position:fixed;inset:0;background:rgba(15,23,42,.5);display:none;
+  align-items:flex-end;justify-content:center;z-index:110}
+.editor-mask.show{display:flex}
+.editor-sheet{background:var(--card);width:100%;max-width:640px;border-radius:18px 18px 0 0;
+  max-height:88vh;overflow-y:auto;animation:sheetup .22s ease-out;
+  padding-bottom:env(safe-area-inset-bottom)}
+@keyframes sheetup{from{transform:translateY(30px);opacity:.5}to{transform:translateY(0);opacity:1}}
+.editor-head{display:flex;justify-content:space-between;align-items:flex-start;
+  padding:18px 18px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:2}
+.editor-title{font-size:18px;font-weight:800;color:var(--primary-d)}
+.editor-sub{font-size:11.5px;color:var(--muted);margin-top:2px}
+.editor-close{border:none;background:#f1f5f9;color:#64748b;width:30px;height:30px;
+  border-radius:50%;font-size:20px;cursor:pointer;line-height:1}
+.editor-body{padding:6px 18px}
+.ed-field{margin:10px 0}
+.ed-field label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.ed-field input,.ed-field textarea{width:100%;border:1px solid var(--line);border-radius:9px;
+  padding:9px 11px;font-size:14px;font-family:inherit;outline:none;background:#fafbfd;resize:vertical}
+.ed-field input:focus,.ed-field textarea:focus{border-color:var(--primary)}
+.ed-sense-box{background:#fafbf8;border:1px solid #ece2cc;border-radius:9px;padding:8px 11px;margin:8px 0}
+.ed-sense-box .ed-sense-hd{font-size:12px;color:#1d3f7a;font-weight:700;margin-bottom:5px}
+.tag-picker{padding:6px 18px 12px;border-top:1px solid var(--line)}
+.tag-picker-label{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px}
+.tag-picker-chips{display:flex;gap:7px;flex-wrap:wrap}
+.tag-opt{border:1.5px solid var(--line);background:#fff;border-radius:16px;padding:6px 13px;
+  font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:.15s}
+.tag-opt .dot{width:9px;height:9px;border-radius:50%}
+.tag-opt.sel{color:#fff;font-weight:700;border-color:transparent}
+.tag-opt.sel[data-tag="不会"]{background:#dc2626}
+.tag-opt.sel[data-tag="不熟"]{background:#ea580c}
+.tag-opt.sel[data-tag="已掌握"]{background:#16a34a}
+.tag-opt.sel.custom{background:#7c3aed}
+.tag-custom{display:flex;gap:8px;margin-top:10px}
+.tag-custom input{flex:1;border:1px solid var(--line);border-radius:9px;padding:8px 11px;
+  font-size:13px;font-family:inherit;outline:none}
+.tag-custom input:focus{border-color:var(--primary)}
+.editor-foot{display:flex;gap:10px;padding:14px 18px;border-top:1px solid var(--line);
+  position:sticky;bottom:0;background:var(--card)}
+.editor-foot .btn{flex:1}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>单词扫描 · 背词器</h1>
+  <div class="sub">
+    <span id="modeBadge" class="mode-badge demo">演示模式</span>
+    <span id="headerVersion" class="version-mini">v2.1.0</span>
+    <span id="headerSub">拍照上传 · 扫描拆解 · 查询词库</span>
+  </div>
+</header>
+
+<!-- ============ 扫描页 ============ -->
+<section class="page active" id="page-scan">
+  <div class="version-card">
+    <div class="version-head" onclick="toggleChangelog()">
+      <span class="version-badge" id="versionBadge">v2.1.0</span>
+      <span class="version-date" id="versionDate">2026-11-17 更新</span>
+      <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
+    </div>
+    <div class="version-latest" id="versionLatest"></div>
+    <div class="version-history" id="versionHistory"></div>
+  </div>
+
+  <div class="upload-zone" id="dropZone">
+    <div class="upload-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    </div>
+    <h2>批量拍摄 / 选择页面</h2>
+    <p>照片先存到下方列表等待（最多 15 张），全部拍完后点按钮一起提交解析</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="openScanPrompt('file')">选择多张图片</button>
+      <button class="btn btn-ghost" onclick="openScanPrompt('camera')">拍照</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment">
+  </div>
+
+  <div class="last-progress" id="lastProgress">读取扫描进度…</div>
+
+  <div class="tip-bar">
+    📖 <b>先存后提交：</b>拍照/选图只把照片<b>保存到下方列表</b>，不会立即解析；可连续拍、分次选，最多 <b>15 张</b>。全部准备好后点「🚀 开始识别并入库」一次性处理：逐张读出印刷页码 → 按页码顺序扫描入库。若某页页码识别有误，可先「仅识别页码」在缩略图上校正。
+  </div>
+
+  <div class="batch-head" id="batchHead" style="display:none">
+    <b id="batchCount">已选 0 页</b>
+    <button class="btn btn-ghost btn-sm" onclick="clearBatch()">清空</button>
+  </div>
+  <div class="batch-list" id="batchList"></div>
+
+  <div class="batch-actions" id="batchActions" style="display:none">
+    <button class="btn btn-accent" id="autoBtn" onclick="autoRunAll()">🚀 开始识别并入库（统一提交）</button>
+  </div>
+
+  <div class="progress" id="progressBox">
+    <div class="progress-bar"><i id="progressBar"></i></div>
+    <div class="progress-label" id="progressLabel">准备中…</div>
+  </div>
+
+  <div class="result-card" id="resultCard">
+    <div class="result-head">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg>
+      批量拆解入库完成
+    </div>
+    <div class="result-stats" id="resultStats"></div>
+    <div id="boundarySummary"></div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px">识别词条（去重）：</div>
+    <div class="chip-list" id="resultChips"></div>
+  </div>
+
+  <div class="hint" id="scanHint">
+    <b>关于演示模式：</b>未配置 Supabase 时，会用内置 P123 样例演示完整流程，数据存在本机。当前为在线模式，可直接使用真实批量扫描。
+  </div>
+</section>
+
+<!-- ============ 词库页（仿书本 · 单列无限滚动） ============ -->
+<section class="page" id="page-words">
+  <div class="searchbar">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+      <input type="text" id="searchInput" placeholder="搜索英文单词或中文释义…" oninput="onSearchChange()">
+    </div>
+  </div>
+  <div class="tag-filter" id="tagFilter"></div>
+  <div class="list-summary" id="listSummary">共 0 个单词</div>
+  <div class="book-tip">📖 长按词条可编辑内容、打学习标签；按 A–Z 顺序滚动浏览</div>
+  <div id="wordList" class="book-list"></div>
+  <div id="scrollSentinel" class="scroll-sentinel"><span class="mini-spinner"></span> 加载更多…</div>
+</section>
+
+<!-- ============ 设置页 ============ -->
+<section class="page" id="page-settings">
+  <div class="settings">
+    <div class="field">
+      <label>Supabase Project URL</label>
+      <input type="text" id="cfgUrl" placeholder="https://xxxx.supabase.co">
+      <div class="desc">在 Supabase 控制台 Settings → API 中查看 Project URL</div>
+    </div>
+    <div class="field">
+      <label>Supabase anon / public key</label>
+      <input type="password" id="cfgKey" placeholder="eyJhbGciOi…">
+      <div class="desc">同页面的 anon public key，仅用于只读查询与调用扫描函数</div>
+    </div>
+    <div class="field">
+      <label>书名（book_id）</label>
+      <input type="text" id="cfgBook" value="victor" placeholder="victor">
+      <div class="desc">同一本书的单词去重依据，建议用英文短标识</div>
+    </div>
+    <div class="field">
+      <div class="switch-row">
+        <div>
+          <label style="margin:0">演示模式</label>
+          <div class="desc">开启后使用内置样例数据，不连接 Supabase</div>
+        </div>
+        <div class="switch on" id="demoSwitch" onclick="toggleDemo()"><i></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="save-bar">
+    <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+    <button class="btn btn-ghost" onclick="testConnection()">测试连接</button>
+  </div>
+  <div class="status-line" id="statusLine"></div>
+
+  <div class="about">
+    第一版功能：拍照上传 → AI 扫描拆解入库 → 查询单词列表<br>
+    数据库 Supabase · 拆解由服务端 Edge Function 调用多模态 AI 完成<br>
+    密钥仅保存在服务端，前端不接触 API Key<br>
+    配置方法见随附 <code>README.md</code>
+  </div>
+</section>
+
+<nav>
+  <button class="active" data-page="scan" onclick="switchPage('scan')">
+    <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    <span>扫描</span>
+  </button>
+  <button data-page="words" onclick="switchPage('words')">
+    <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    <span>词库</span>
+    <i class="badge-count" id="navBadge">0</i>
+  </button>
+  <button data-page="settings" onclick="switchPage('settings')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 0 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 0 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 0 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <span>设置</span>
+  </button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<!-- 扫描进度提示弹框 -->
+<div class="modal-mask" id="scanPrompt" onclick="if(event.target===this)closeScanPrompt()">
+  <div class="modal">
+    <div class="modal-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    </div>
+    <div class="modal-title" id="spTitle">上次扫描进度</div>
+    <div class="modal-desc" id="spDesc"></div>
+    <div class="modal-choices" id="spChoices"></div>
+    <div class="modal-cancel" onclick="closeScanPrompt()">取消，暂不扫描</div>
+  </div>
+</div>
+
+<!-- 自定义相机（连续拍照） -->
+<div class="cam-mask" id="cameraModal">
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="cam-flash" id="camFlash"></div>
+  <div class="cam-top">
+    <span class="cam-count" id="camCount">本次已拍 0 张 · 队列 0/15</span>
+    <button class="cam-close" onclick="closeCamera()" aria-label="关闭相机">×</button>
+  </div>
+  <div class="cam-bottom">
+    <div class="cam-status" id="camStatus">正在打开相机…</div>
+    <button class="cam-shutter" onclick="snapPhoto()" aria-label="拍照"></button>
+    <button class="cam-done" onclick="closeCamera()">完成，返回列表</button>
+  </div>
+</div>
+
+<!-- 长按编辑弹框 -->
+<div class="editor-mask" id="editorModal" onclick="if(event.target===this)closeEditor()">
+  <div class="editor-sheet">
+    <div class="editor-head">
+      <div>
+        <div class="editor-title" id="edTitle">编辑词条</div>
+        <div class="editor-sub" id="edMeta"></div>
+      </div>
+      <button class="editor-close" onclick="closeEditor()">×</button>
+    </div>
+    <div class="editor-body" id="edBody"></div>
+    <div class="tag-picker">
+      <div class="tag-picker-label">学习标签（点击切换）</div>
+      <div class="tag-picker-chips" id="edTagChips"></div>
+      <div class="tag-custom">
+        <input type="text" id="edCustomTag" placeholder="自定义标签，回车添加" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomTag()}">
+        <button class="btn btn-ghost btn-sm" onclick="addCustomTag()">添加</button>
+      </div>
+    </div>
+    <div class="editor-foot">
+      <button class="btn btn-ghost" onclick="closeEditor()">取消</button>
+      <button class="btn btn-primary" onclick="saveEditor(this)">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="demo-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
