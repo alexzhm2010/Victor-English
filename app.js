@@ -17,6 +17,9 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.1', date: '2026-11-17', items: [
+    '移除词卡上的编辑笔按钮，统一用长按/右键编辑，界面更简洁',
+  ]},
   { v: '2.1.0', date: '2026-11-17', items: [
     '录入重构：单页独立处理，失败可随时单独重试，不再卡全局',
     '浏览页改为仿书本单列排版，按 A–Z 无限滚动、自动预加载',
@@ -1221,7 +1224,6 @@ function wordCardHtml(w, i) {
       <span class="word-ph">${esc(w.phonetic || '')}</span>
       ${studyTags}${identityTag}${freqLevelTag}${derivedTag}${level}${page}${partialTag}
       <span class="word-def">${esc(w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '')}</span>
-      <button class="edit-btn" onclick="event.stopPropagation();openEditor('${key}')" title="编辑">✎</button>
     </div>
     <div class="word-body">
       ${senses || '<div style="font-size:13px;color:var(--muted);padding:8px 0">（无详细义项）</div>'}
