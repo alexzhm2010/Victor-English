@@ -28,6 +28,9 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.16.1', date: '2026-11-17', items: [
+    '导入记录清单改为按页码倒序（大页码在前），最新扫描的页一眼可见',
+  ]},
   { v: '2.16.0', date: '2026-11-17', items: [
     '云端任务队列：提交后浏览器可随时关闭/退后台，入库改由云端自动执行，回来随时看结果，不再依赖页面开着',
     '执行清单并入「记录」页：每个任务显示状态、进度条、每页识别词数与错误，逐页可展开核对，一目了然',
@@ -2539,7 +2542,7 @@ function esc(s) {
  *  - 分页每页 20 条；支持按页码跳转定位
  * ============================================================ */
 const REC_PAGE_SIZE = 20;
-let recordRows = [];            // 全部记录（按页码升序、同页按时间降序）
+let recordRows = [];            // 全部记录（按页码降序、同页按时间降序）
 let recordPage = 1;             // 当前分页
 let recordFilterPage = null;    // 页码过滤（null=全部）
 let recordRawCache = {};        // batch id -> words[]
@@ -2737,7 +2740,7 @@ async function loadRecords() {
   try {
     // 只取列表所需字段，不取 raw_result（展开时按需拉取）
     const sel = 'id,page_no,status,words_found,created_at,error_msg,prev_page_no,partial_words';
-    const url = `${cfg.url}/rest/v1/vw_scan_batches?book_id=eq.${encodeURIComponent(cfg.book)}&select=${sel}&order=page_no.asc,created_at.desc`;
+    const url = `${cfg.url}/rest/v1/vw_scan_batches?book_id=eq.${encodeURIComponent(cfg.book)}&select=${sel}&order=page_no.desc,created_at.desc`;
     const r = await fetchWithRetry(url, { headers: SYNC_HEADERS() }, { label: '加载导入记录' });
     if (!r.ok) {
       const t = await r.text();
@@ -2913,7 +2916,7 @@ function jumpToRecordPage() {
   if (!v || !/^\d+$/.test(v)) { toast('请输入有效的页码数字'); return; }
   const pg = Number(v);
   if (!recordRows.length) { toast('暂无导入记录'); return; }
-  // 在全部记录里找该页第一条（列表按页码升序，第一条即最早导入）
+  // 在全部记录里找该页第一条（列表按页码降序，同页第一条即最新导入）
   const idx = recordRows.findIndex(r => String(r.page_no) === String(pg));
   if (idx < 0) { toast(`第 ${pg} 页还没有导入记录`); return; }
   recordFilterPage = pg;
