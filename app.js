@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.11.0', date: '2026-11-17', items: [
+    '修复重扫漏词：AI 视觉识别偶发不稳（同图 5 词/10 词波动），改为词数偏少时自动重试取最全结果',
+    '重扫保护：若本次识别词数明显少于原有（<70%），拒绝覆盖并保留原数据，绝不再把整页词洗少',
+  ]},
   { v: '2.10.0', date: '2026-11-17', items: [
     '修复长按体验：操作条出现后稳定停留，松手/上下滚动都不消失；仅点其他单词或再点该行才收起',
     '禁用长按选中文本，杜绝安卓系统自带的「复制/全选/翻译」弹框干扰',
@@ -1229,8 +1233,13 @@ async function scanAllPages() {
       summary.push(result);
       if (result && result.nextContext) nextContext = result.nextContext;
     } catch (e) {
+      // 识别不完整保护：后端主动拒收，明确展示原因，不走"假成功"复查
+      if (/识别不完整|保留原数据/.test(e.message)) {
+        item.status = 'error';
+        item.error = e.message;
+      }
       // 假失败复查：网络超时可能服务端已入库，若该页已有词则纠正为成功
-      if (await isPageActuallyRecorded(pageNo)) {
+      else if (await isPageActuallyRecorded(pageNo)) {
         item.status = 'done';
         item.error = null;
         item.result = { ok: true, words_found: null, note: '服务端已入库成功，仅为回传超时（无需重试）' };
