@@ -17,6 +17,11 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.7.0', date: '2026-11-17', items: [
+    '词库右侧新增 A-Z 索引滑块：上下拖动快速定位到对应字母的词条',
+    '当前字母放大、左右邻字母按距离平滑缩放过渡，松手后自动淡出',
+    '索引随搜索/标签过滤自动更新，无词字母自动就近跳转',
+  ]},
   { v: '2.6.0', date: '2026-11-17', items: [
     '修复并列短语动词解析：act as / act on / act out 等各自独立成短语并保留中文释义',
     '短语例句按所属短语正确归位，不再全堆到最后一个短语下；括号同义短语（= act upon）存入注释',
@@ -239,6 +244,7 @@ function switchPage(name) {
   document.getElementById('page-' + name).classList.add('active');
   document.querySelectorAll('nav button').forEach(b =>
     b.classList.toggle('active', b.dataset.page === name));
+  updateAzVisibility();
   if (name === 'words') resetWordList();
 }
 function toast(msg) {
@@ -1314,6 +1320,140 @@ function onSearchChange() {
   _searchTimer = setTimeout(resetWordList, 180);
 }
 
+/* ---------------- 词库右侧 A-Z 索引滑块 ---------------- */
+const AZ_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+let _azLetterEls = [];        // 26 个字母 DOM
+let _azFirstIdx = {};         // 字母 -> filteredWords 中首个匹配下标
+let _azActive = -1;           // 当前激活字母下标（-1 无）
+let _azDragging = false;
+let _azBubbleTimer = null;
+
+// 取单词的首字母（大写），忽略非字母前缀
+function wordInitial(w) {
+  const s = String((w && w.headword) || '').replace(/^[^a-zA-Z]+/, '').charAt(0);
+  return s ? s.toUpperCase() : '';
+}
+
+// 依据当前 filteredWords 建立「字母 -> 首个词条下标」映射，并给字母标注可用性
+function buildAzMap() {
+  _azFirstIdx = {};
+  filteredWords.forEach((w, i) => {
+    const c = wordInitial(w);
+    if (c && _azFirstIdx[c] == null) _azFirstIdx[c] = i;
+  });
+  _azLetterEls.forEach((el, k) => {
+    el.classList.toggle('available', _azFirstIdx[AZ_LETTERS[k]] != null);
+  });
+}
+
+// 初始化索引条（只做一次）
+function initAzIndex() {
+  const host = document.getElementById('azLetters');
+  if (!host || host.childElementCount) return;
+  host.innerHTML = AZ_LETTERS.map((c, i) =>
+    `<div class="az-letter" data-i="${i}">${c}</div>`).join('');
+  _azLetterEls = Array.from(host.querySelectorAll('.az-letter'));
+
+  const indexEl = document.getElementById('azIndex');
+  const bubble = document.getElementById('azBubble');
+
+  // 根据屏幕 Y 坐标算出落在哪个字母上
+  const letterFromY = (clientY) => {
+    if (!_azLetterEls.length) return -1;
+    const r0 = _azLetterEls[0].getBoundingClientRect();
+    const rL = _azLetterEls[_azLetterEls.length - 1].getBoundingClientRect();
+    const top = r0.top, bottom = rL.bottom;
+    const i = Math.round((clientY - top) / Math.max(1, (bottom - top) / 25));
+    return Math.max(0, Math.min(25, i));
+  };
+
+  const activate = (i, jump = true) => {
+    if (i < 0 || i === _azActive) { if (jump && i === _azActive) jumpToLetter(i); return; }
+    _azActive = i;
+    // 均匀过渡：当前最大，左右按距离线性衰减
+    const MAX = 1.95, STEP = 0.27;
+    _azLetterEls.forEach((el, k) => {
+      const d = Math.abs(k - i);
+      const scale = Math.max(1, MAX - d * STEP);
+      el.style.transform = 'scale(' + scale.toFixed(3) + ')';
+      el.classList.toggle('active', k === i);
+      el.style.position = k === i ? 'relative' : '';
+    });
+    bubble.textContent = AZ_LETTERS[i];
+    jumpToLetter(i);
+  };
+
+  const clearActive = () => {
+    _azActive = -1;
+    _azLetterEls.forEach(el => { el.style.transform = ''; el.classList.remove('active'); el.style.position = ''; });
+  };
+
+  // 跳转到该字母的首个词条（先补足无限滚动未渲染的部分）
+  function jumpToLetter(i) {
+    const letter = AZ_LETTERS[i];
+    let idx = _azFirstIdx[letter];
+    if (idx == null) {
+      // 该字母无词：就近找下一个有词的字母（不必精确落空）
+      for (let k = i + 1; k < 26; k++) { if (_azFirstIdx[AZ_LETTERS[k]] != null) { idx = _azFirstIdx[AZ_LETTERS[k]]; break; } }
+      if (idx == null) for (let k = i - 1; k >= 0; k--) { if (_azFirstIdx[AZ_LETTERS[k]] != null) { idx = _azFirstIdx[AZ_LETTERS[k]]; break; } }
+    }
+    if (idx == null || !filteredWords[idx]) return;
+    // 先把目标词条渲染出来（无限滚动分批）
+    let guard = 0, didRender = false;
+    while (renderedCount <= idx && guard++ < 200) { appendWords(); didRender = true; }
+    const w = filteredWords[idx];
+    const key = w.id != null ? ('id' + w.id) : ('hw' + esc(w.headword));
+    // 补渲染会异步撑高页面，滚动可能被 clamp 到旧的滚动上限。
+    // 用带重试的定位：连续几帧复查目标卡片位置，直到把它带到顶部附近。
+    let tries = 0;
+    const doScroll = () => {
+      const card = document.getElementById('wc-' + key);
+      if (card) {
+        const y = card.getBoundingClientRect().top + window.pageYOffset - 8;
+        window.scrollTo(0, y);
+        // 若因高度未就绪被 clamp（卡片仍远离顶部），下一帧重试
+        if (Math.abs(card.getBoundingClientRect().top - 8) > 4 && tries++ < 8) {
+          requestAnimationFrame(doScroll);
+        }
+      }
+    };
+    requestAnimationFrame(doScroll);
+  }
+
+  const onDown = (e) => {
+    _azDragging = true;
+    clearTimeout(_azBubbleTimer);
+    indexEl.classList.add('dragging');
+    try { indexEl.setPointerCapture(e.pointerId); } catch (err) {}
+    activate(letterFromY(e.clientY));
+    e.preventDefault();
+  };
+  const onMove = (e) => { if (_azDragging) activate(letterFromY(e.clientY)); };
+  const onUp = () => {
+    if (!_azDragging) return;
+    _azDragging = false;
+    indexEl.classList.remove('dragging');
+    // 松手后短暂保留高亮，再淡出
+    _azBubbleTimer = setTimeout(clearActive, 650);
+  };
+  indexEl.addEventListener('pointerdown', onDown);
+  indexEl.addEventListener('pointermove', onMove);
+  indexEl.addEventListener('pointerup', onUp);
+  indexEl.addEventListener('pointercancel', onUp);
+  // 点击单个字母（pointerdown 已覆盖，这里兼容键盘/辅助点击）
+  host.addEventListener('click', (e) => {
+    const el = e.target.closest('.az-letter');
+    if (el) activate(Number(el.dataset.i));
+  });
+}
+
+// 显隐：仅词库页显示；过滤后无词则隐藏
+function updateAzVisibility() {
+  const el = document.getElementById('azIndex');
+  if (!el) return;
+  el.classList.toggle('show', document.getElementById('page-words').classList.contains('active') && filteredWords.length > 0);
+}
+
 // 依据搜索词 + 当前标签，计算过滤后的列表
 function computeFiltered() {
   const q = (document.getElementById('searchInput').value || '').trim().toLowerCase();
@@ -1340,6 +1480,8 @@ function resetWordList() {
   // 分数形式：分子 = 搜索/筛选后的数量，分母 = 全部数量
   document.getElementById('listSummary').innerHTML =
     `<b>${filteredWords.length}</b><span class="frac-sep">/</span>${allWords.length}`;
+  buildAzMap();
+  updateAzVisibility();
   const sentinel = document.getElementById('scrollSentinel');
   if (!filteredWords.length) {
     sentinel.classList.add('hidden');
@@ -1668,6 +1810,7 @@ function esc(s) {
   document.getElementById('demoSwitch').classList.toggle('on', cfg.demo);
   applyMode();
   renderVersion();
+  initAzIndex();
   refreshWords();
   // 预取扫描进度（弹框弹出时可直接用），失败不影响
   updateProgressDisplay();
