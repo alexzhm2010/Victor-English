@@ -17,6 +17,10 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.8', date: '2026-11-17', items: [
+    '修复重复解析：同一词重扫后词性带点/不带点生成两套义项，导致中文释义与例句重复',
+    '词性归一合并义项，例句按英文去重，释义取更完整的一条',
+  ]},
   { v: '2.1.7', date: '2026-11-17', items: [
     '版本卡片只显示当前版本，移除历史版本列表',
     '精简各页辅助说明文字，界面更清爽',
@@ -1022,6 +1026,58 @@ function showBatchResult(summary) {
 }
 
 /* ---------------- 词库查询 ---------------- */
+// 词性归一化：去掉末尾句点（adj./adj. → adj），与后端 normPos 保持一致
+function normPosFront(p) { return String(p || '').trim().replace(/\.+$/, '').toLowerCase(); }
+// 中文释义"纯度"评分：中文越多、英文越少越高，用于从重复义项里挑正确释义
+function hanScore(s) {
+  const str = String(s || '');
+  if (!str.trim()) return -1;
+  const han = (str.match(/[\u3400-\u9fff]/g) || []).length;
+  const latin = (str.match(/[A-Za-z]/g) || []).length;
+  return han - latin * 2;
+}
+// 显示层去重：同一词多次扫描会因词性带点/不带点产生重复义项（adj vs adj.），
+// 按「归一化词性|义项号」合并：释义取中文最纯的、常考标取任一条、例句按英文去重合并
+function dedupeSenses(senses) {
+  if (!Array.isArray(senses)) return [];
+  const groups = new Map();
+  for (const s of senses) {
+    const no = s.sense_no ?? s.no ?? 0;
+    const key = normPosFront(s.pos) + '|' + no;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  }
+  const out = [];
+  for (const arr of groups.values()) {
+    // 主义项取 id 最大者（新批次提示词更准），保留其 id 供长按编辑写回
+    let base = arr.reduce((a, b) => (Number(b.id) || 0) > (Number(a.id) || 0) ? b : a, arr[0]);
+    base = Object.assign({}, base);
+    // 中文释义取中文纯度最高的一条
+    let best = arr[0];
+    for (const s of arr) if (hanScore(s.chinese_def || s.def) > hanScore(best.chinese_def || best.def)) best = s;
+    if (hanScore(best.chinese_def || best.def) >= 0) base.chinese_def = best.chinese_def || best.def || base.chinese_def;
+    // 常考标：任一条为高频则保留
+    if (arr.some(s => Number(s.sense_freq) === 1)) base.sense_freq = 1;
+    // 补齐其它字段
+    for (const f of ['countability', 'usage_label', 'english_def', 'antonym']) {
+      if (!base[f]) { const hit = arr.find(s => s[f]); if (hit) base[f] = hit[f]; }
+    }
+    // 例句：跨重复义项按英文去重合并
+    const seen = new Set(); const ex = [];
+    for (const s of arr) {
+      for (const e of (s.examples || s.items || [])) {
+        const k = String(e.en || '').toLowerCase().replace(/[\s\p{P}]/gu, '');
+        if (k && seen.has(k)) continue;
+        if (k) seen.add(k);
+        ex.push(e);
+      }
+    }
+    base.examples = ex;
+    out.push(base);
+  }
+  return out;
+}
+
 async function refreshWords() {
   if (cfg.demo) {
     try { allWords = JSON.parse(localStorage.getItem(LS.demo) || '[]'); }
@@ -1044,8 +1100,11 @@ async function refreshWords() {
       notes: w.vw_notes || []
     }));
   }
-  // 演示数据也归一化 tags
-  allWords.forEach(w => { if (!Array.isArray(w.tags)) w.tags = []; });
+  // 统一归一化：tags 数组 + 义项去重（消除重复扫描产生的 adj/adj. 双份义项）
+  allWords.forEach(w => {
+    if (!Array.isArray(w.tags)) w.tags = [];
+    w.senses = dedupeSenses(w.senses);
+  });
   // 按 A–Z 排序（忽略大小写），供仿书本顺序滚动
   allWords.sort((a, b) => String(a.headword || '').toLowerCase().localeCompare(String(b.headword || '').toLowerCase()));
   rebuildTagFilter();
