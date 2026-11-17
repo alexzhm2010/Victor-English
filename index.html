@@ -164,9 +164,9 @@ input[type=file]{display:none}
 .tag-chip.active{border-color:transparent;color:#fff;font-weight:700}
 .tag-chip.active[data-tag="__all__"]{background:var(--primary-d)}
 .tag-chip.active[data-tag="不会"]{background:#dc2626}
-.tag-chip.active[data-tag="不熟"]{background:#ea580c}
-.tag-chip.active[data-tag="已掌握"]{background:#16a34a}
-.tag-chip.active:not([data-tag="__all__"]):not([data-tag="不会"]):not([data-tag="不熟"]):not([data-tag="已掌握"]){background:#7c3aed}
+.tag-chip.active[data-tag="已会"]{background:#16a34a}
+.tag-chip.active[data-tag="进度"]{background:#d97706}
+.tag-chip.active:not([data-tag="__all__"]):not([data-tag="不会"]):not([data-tag="已会"]):not([data-tag="进度"]){background:#7c3aed}
 
 .list-summary{font-size:13px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums}
 .list-summary b{color:var(--primary-d);font-size:17px;font-weight:800}
@@ -186,13 +186,17 @@ input[type=file]{display:none}
   background:rgba(255,255,255,.42);border:1px solid rgba(148,180,210,.22);
   -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .az-index.show{display:flex}
-.az-letter{display:flex;align-items:center;justify-content:center;
+.az-letter{position:relative;display:flex;align-items:center;justify-content:center;
   width:20px;height:17px;font-size:10px;font-weight:700;line-height:1;
   color:var(--muted);transform-origin:center center;
   transition:transform .16s cubic-bezier(.2,.75,.3,1),color .16s;
   will-change:transform}
 .az-letter.available{color:var(--primary-d)}
+.az-letter.has-progress{color:#b45309}
+.az-letter.has-progress::after{content:"";position:absolute;top:1px;right:1px;width:5px;height:5px;
+  border-radius:50%;background:#f59e0b;box-shadow:0 0 0 1.5px #fff,0 0 5px rgba(245,158,11,.8)}
 .az-letter.active{color:#fff;z-index:2}
+.az-letter.active::after{display:none}
 /* 激活时当前字母的放大胶囊背景（随缩放一起过渡） */
 .az-letter.active::before{content:"";position:absolute;width:22px;height:22px;border-radius:50%;
   background:var(--primary-g);box-shadow:0 3px 10px rgba(74,125,181,.4);z-index:-1}
@@ -224,12 +228,35 @@ input[type=file]{display:none}
 .word-body{display:none;padding:4px 0 4px 8px}
 .word-card.open .word-body{display:block}
 
-/* 学习标签徽标（词头旁，不同颜色） */
+/* 学习状态徽标（词头旁）：已会/不会/进度 */
 .study-tag{font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;white-space:nowrap}
 .study-tag.不会{background:#fee2e2;color:#b91c1c}
-.study-tag.不熟{background:#ffedd5;color:#c2410c}
-.study-tag.已掌握{background:#dcfce7;color:#15803d}
+.study-tag.已会{background:#dcfce7;color:#15803d}
+.study-tag.进度{background:#fef3c7;color:#b45309;box-shadow:0 0 0 1px #fcd34d inset}
 .study-tag.custom{background:#ede9fe;color:#6d28d9}
+
+/* 长按左滑操作区：右侧让出约一半空间露出「已会/不会/进度」，单词名保持可见 */
+.word-row{position:relative;overflow:hidden;border-radius:4px}
+.word-swipe{overflow:hidden;transition:padding-right .26s cubic-bezier(.2,.75,.3,1),transform .26s cubic-bezier(.2,.75,.3,1);will-change:padding-right,transform}
+/* 用 padding 把词头内容挤到左半（单词名不出界），再轻微左移制造滑动感 */
+.word-card.revealed .word-swipe{padding-right:57%;transform:translateX(-4px)}
+.word-card.revealed .word-hd{flex-wrap:nowrap}
+.word-actions{position:absolute;right:0;top:0;bottom:0;width:55%;display:flex;align-items:stretch;
+  gap:4px;padding:2px 0 2px 6px;box-sizing:border-box;opacity:0;pointer-events:none;
+  transition:opacity .2s;
+  background:linear-gradient(90deg,rgba(255,250,240,0),rgba(239,246,255,.7) 30%)}
+.word-card.revealed .word-actions{opacity:1;pointer-events:auto}
+.act-btn{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--card);
+  font-family:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:3px;white-space:nowrap;
+  min-height:34px;transition:transform .12s,filter .12s}
+.act-btn:active{transform:scale(.94)}
+.act-btn .ico{font-size:13px;line-height:1}
+.act-btn.sel-known{background:#16a34a;border-color:#16a34a;color:#fff}
+.act-btn.sel-wont{background:#dc2626;border-color:#dc2626;color:#fff}
+.act-btn.sel-progress{background:#d97706;border-color:#d97706;color:#fff}
+/* 进度词卡：左侧竖条 + 浅金底，A-Z 定位后醒目 */
+.word-card.is-progress{box-shadow:inset 3px 0 0 #f59e0b;background:rgba(251,191,36,.06);border-radius:4px}
 
 /* 义项：实心圆序号 + 彩色词性 */
 .sense{padding:5px 0 2px;border-bottom:1px dashed #e6dcc4}
@@ -512,7 +539,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
 <header>
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
-  <span id="headerVersion" class="version-mini">v2.7.0</span>
+  <span id="headerVersion" class="version-mini">v2.8.0</span>
 </header>
 
 <!-- ============ 桌面端左侧导航（手机端隐藏） ============ -->
@@ -533,7 +560,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
       <span>设置</span>
     </button>
   </nav>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.7.0</b></div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.8.0</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -624,7 +651,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
   <div class="version-card" id="versionCard">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.7.0</span>
+      <span class="version-badge" id="versionBadge">v2.8.0</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
@@ -682,32 +709,6 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
     <div class="cam-status" id="camStatus">正在打开相机…</div>
     <button class="cam-shutter" onclick="snapPhoto()" aria-label="拍照"></button>
     <button class="cam-done" onclick="closeCamera()">完成，返回列表</button>
-  </div>
-</div>
-
-<!-- 长按编辑弹框 -->
-<div class="editor-mask" id="editorModal" onclick="if(event.target===this)closeEditor()">
-  <div class="editor-sheet">
-    <div class="editor-head">
-      <div>
-        <div class="editor-title" id="edTitle">编辑词条</div>
-        <div class="editor-sub" id="edMeta"></div>
-      </div>
-      <button class="editor-close" onclick="closeEditor()">×</button>
-    </div>
-    <div class="editor-body" id="edBody"></div>
-    <div class="tag-picker">
-      <div class="tag-picker-label">学习标签（点击切换）</div>
-      <div class="tag-picker-chips" id="edTagChips"></div>
-      <div class="tag-custom">
-        <input type="text" id="edCustomTag" placeholder="自定义标签，回车添加" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomTag()}">
-        <button class="btn btn-ghost btn-sm" onclick="addCustomTag()">添加</button>
-      </div>
-    </div>
-    <div class="editor-foot">
-      <button class="btn btn-ghost" onclick="closeEditor()">取消</button>
-      <button class="btn btn-primary" onclick="saveEditor(this)">保存</button>
-    </div>
   </div>
 </div>
 
