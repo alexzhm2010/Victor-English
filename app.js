@@ -28,6 +28,11 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.10.0', date: '2026-11-17', items: [
+    '修复长按体验：操作条出现后稳定停留，松手/上下滚动都不消失；仅点其他单词或再点该行才收起',
+    '禁用长按选中文本，杜绝安卓系统自带的「复制/全选/翻译」弹框干扰',
+    '新增会话状态记忆：切后台或切 App 再回来会自动恢复到离开时的页面、位置和筛选，减少重建感',
+  ]},
   { v: '2.9.0', date: '2026-11-17', items: [
     '新增同步码：输入同步码进入，每人学习进度（已会/不会/进度）按码隔离保存，互不干扰',
     '超级码 663798 可进入扫描页与设置页；普通同步码只能浏览词库与记录进度',
@@ -262,6 +267,46 @@ async function testConnection() {
   } catch (e) { setStatus('网络错误：' + e.message, 'err'); }
 }
 
+/* ============================================================
+ * 会话状态持久化：WebView 切后台被回收重进时，尽量还原现场
+ * 存 sessionStorage（标签页级），只记录轻量 UI 状态，不碰数据本身
+ * ============================================================ */
+const SS_UI = 'vocab_ui_session';
+function saveUiState(opts) {
+  opts = opts || {};
+  try {
+    const active = document.querySelector('.page.active');
+    const prev = loadUiState();
+    // 卸载钩子(unload)里 DOM 与滚动已进入过渡态不可信：page 沿用上次记录，仅更新数据字段
+    const page = opts.unload
+      ? (prev.page || 'words')
+      : (active ? active.id.replace(/^page-/, '') : 'words');
+    const qEl = document.getElementById('searchInput');
+    sessionStorage.setItem(SS_UI, JSON.stringify({
+      page,
+      scrollY: opts.unload
+        ? (prev.scrollY || 0)
+        : Math.round(window.scrollY || window.pageYOffset || 0),
+      activeTag,
+      q: qEl ? qEl.value : (prev.q || ''),
+      ts: Date.now(),
+    }));
+  } catch (e) {}
+}
+function loadUiState() {
+  try { return JSON.parse(sessionStorage.getItem(SS_UI) || '{}'); } catch (e) { return {}; }
+}
+// 滚动时节流保存（仅词库页，避免滚动位置被其它页面覆盖）
+let _scrollSaveTimer = null;
+window.addEventListener('scroll', () => {
+  if (!document.getElementById('page-words').classList.contains('active')) return;
+  clearTimeout(_scrollSaveTimer);
+  _scrollSaveTimer = setTimeout(saveUiState, 250);
+}, { passive: true });
+// 页面被隐藏/卸载前兜底保存（切后台、切 App）：只更新数据字段，不覆盖页面与滚动
+window.addEventListener('pagehide', () => saveUiState({ unload: true }));
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveUiState({ unload: true }); });
+
 /* ---------------- 导航（同步码门禁） ---------------- */
 function switchPage(name) {
   // 普通同步码只能进词库页；扫描/设置页对普通码隐藏
@@ -275,6 +320,7 @@ function switchPage(name) {
     b.classList.toggle('active', b.dataset.page === name));
   updateAzVisibility();
   if (name === 'words') resetWordList();
+  saveUiState();
 }
 
 /* ============================================================
@@ -1930,22 +1976,34 @@ function wordCardHtml(w, i) {
   </div>`;
 }
 function toggleCard(key) {
-  // 长按左滑后紧随的 click 不应立刻收起/切换（保留约 500ms 窗口）
-  if (Date.now() - _revealTs < 500) return;
+  // 吞掉长按松开后紧随的那次 click：让操作条稳定留在屏上，不闪退
+  if (_swallowNextClick) { _swallowNextClick = false; return; }
   const el = document.getElementById('wc-' + key);
   if (!el) return;
-  // 若操作条已展开，先收起而不切换详情（避免点词头误触）
-  if (el.classList.contains('revealed')) { collapseRevealed(); return; }
+  if (_revealedKey) {
+    if (_revealedKey === key) {
+      // 点已展开的同一行词头 → 收起操作条，恢复正常
+      collapseRevealed();
+      return;
+    }
+    // 点其它单词 → 旧操作条退出，新词正常展开详情
+    collapseRevealed();
+    el.classList.toggle('open');
+    return;
+  }
   el.classList.toggle('open');
 }
 
 /* ---------------- 长按检测：左滑露出操作条 ---------------- */
 let _pressTimer = null;
+let _swallowNextClick = false;   // 长按松开后紧随的 click 需吞掉，避免误展开/收起
 function startLongPress(key, ev) {
   cancelLongPress();
   _pressTimer = setTimeout(() => {
     _pressTimer = null;
     if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e) {} }
+    // 清除可能已被浏览器选中的文本，杜绝系统"复制/全选"菜单残留
+    try { const s = window.getSelection(); if (s) s.removeAllRanges(); } catch (e) {}
     revealRow(key);
   }, 500);
 }
@@ -1965,6 +2023,9 @@ function revealRow(key) {
   el.classList.add('revealed');
   _revealedKey = key;
   _revealTs = Date.now();
+  // 长按结束后浏览器会补发一次 click，标记吞掉，避免操作条刚出现就闪退
+  _swallowNextClick = true;
+  setTimeout(() => { _swallowNextClick = false; }, 400);
 }
 function collapseRevealed() {
   if (!_revealedKey) return;
@@ -2043,8 +2104,7 @@ async function toggleStudyState(key, tag) {
   }
   affected.push(w);
 
-  // 乐观更新 UI
-  collapseRevealed();
+  // 乐观更新 UI（操作条保持展开，方便连续设置；不 collapseRevealed）
   buildAzProgress();
   rebuildTagFilter();
   refreshStudyBadges();
@@ -2083,10 +2143,8 @@ function refreshStudyBadges() {
   });
 }
 
-// 点击页面空白处收起操作条
-document.addEventListener('click', (e) => {
-  if (_revealedKey && Date.now() - _revealTs > 500 && !e.target.closest('.word-actions')) collapseRevealed();
-});
+// 操作条一经展开就保持，直到点其他单词/再次点该行才收起；滚动、松手都不影响。
+// （旧的"点空白收起"逻辑已移除，避免长按松手时操作条一闪而过）
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -2109,6 +2167,7 @@ function esc(s) {
     applyGating();
     await refreshWords();
     if (isSuper()) loadSyncCodeList();
+    restoreUiState();          // 恢复离开时的页面/筛选/搜索/滚动位置
   } else {
     // 无同步码：弹门禁框（首次进入），词库先留空
     applyGating();
@@ -2117,3 +2176,46 @@ function esc(s) {
   // 预取扫描进度（弹框弹出时可直接用），失败不影响
   updateProgressDisplay();
 })();
+
+// 恢复会话现场：页面 / 筛选 / 搜索词 / 滚动位置（词表已由 refreshWords 渲染好）
+function restoreUiState() {
+  const st = loadUiState();
+  if (!st || !st.ts) return;
+  // 恢复搜索词与筛选（需先于 resetWordList 生效）
+  const qEl = document.getElementById('searchInput');
+  if (qEl && typeof st.q === 'string') qEl.value = st.q;
+  if (st.activeTag) activeTag = st.activeTag;
+  // 恢复页面：无论目标是不是词库页，都先把 HTML 默认的 scan 页切到目标页
+  const target = st.page && document.getElementById('page-' + st.page) ? st.page : 'words';
+  if (target !== 'words') {
+    switchPage(target);            // switchPage 内部会校验同步码权限
+  } else {
+    // 词库页：切页 + 按恢复的筛选/搜索重算列表（不经过 switchPage 以免重复 reset）
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-words').classList.add('active');
+    document.querySelectorAll('nav button').forEach(b =>
+      b.classList.toggle('active', b.dataset.page === 'words'));
+    activeTag = st.activeTag || '__all__';
+    rebuildTagFilter();
+    resetWordList();
+    updateAzVisibility();
+  }
+  // 恢复滚动位置：无限滚动初次只渲染 30 条，需先补渲染到目标高度，再多帧重试
+  if (target === 'words' && st.scrollY > 0) {
+    let tries = 0;
+    const doScroll = () => {
+      let max = document.documentElement.scrollHeight - window.innerHeight;
+      // 高度不够时主动补渲染下一批，直到够高或无更多词
+      let guard = 0;
+      while (max < st.scrollY + 40 && renderedCount < filteredWords.length && guard++ < 40) {
+        appendWords();
+        max = document.documentElement.scrollHeight - window.innerHeight;
+      }
+      const y = Math.min(st.scrollY, Math.max(0, max));
+      window.scrollTo(0, y);
+      if (Math.abs(window.scrollY - st.scrollY) > 8 && tries++ < 12) requestAnimationFrame(doScroll);
+      else saveUiState();
+    };
+    requestAnimationFrame(doScroll);
+  }
+}
