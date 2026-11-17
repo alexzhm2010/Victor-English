@@ -28,6 +28,12 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.13.0', date: '2026-11-17', items: [
+    '词库网状呈现：从已入库的派生/同义/反义/辨析关系自动构建词间关系网，不额外识别、不增加流量',
+    '词卡底部新增关系区：派生、同义、同族、辨析、反义分类着色，库内词可点击直达，未收录词灰色标注',
+    '点击关系词自动跳转：清除遮挡的搜索/筛选、滚动定位、展开词卡并高亮闪烁',
+    '词库工具栏新增「书本列表 / 关系网」切换：关系网按词族聚簇布局，节点可拖动平移、滚轮缩放、点击查看词条',
+  ]},
   { v: '2.12.0', date: '2026-11-17', items: [
     '解析逻辑重构：改为「先点名清单、再归位成树、逐条对账」——豆包图上看到的每个词头必须先进入清单，再落到词树，杜绝"看了没归位"导致的漏词',
     '大幅省流量：取消原来每页固定解析 2 次、偏少再补第 3 次的做法，改为单次主解析；仅当对账发现孤儿词时才定向补一次，6 页实测均 1 次调用完成',
@@ -1591,6 +1597,110 @@ function orderSenses(senses) {
   return out;
 }
 
+/* ================= 词间关系网（从树派生，纯前端，不动识别/数据库） =================
+   树保证"不漏"，网保证"不乱"。关系全部来自已入库结构：
+   - 派生：derived_from / parent_word_id
+   - 反义：sense.antonym
+   - 同义/辨析/同族：notes 里 note_type ∈ {同,辨,反,同族词} 的 title 词清单
+   只保留两端都在词库里的边（库内边），另有 external 记录库外关联词供展示。
+*/
+let relGraph = { nodes: [], edges: [], byId: new Map(), byNorm: new Map() };
+
+function normHw(s) {
+  return String(s || '').toLowerCase().replace(/^[*⊕⊖▶▼\s]+/, '').replace(/[^a-z]/g, '');
+}
+function splitWordList(s) {
+  // "above, on, over" / "act, action, active" → ['above','on','over']
+  return String(s || '').split(/[,，、;；\/]+/).map(x => x.trim().replace(/^(同族词|同|辨|反)[:：]?\s*/, '')).map(x => x.replace(/\s*\(.*?\)\s*/g, '').trim()).filter(x => /^[A-Za-z][A-Za-z\-' ]*$/.test(x) && x.length <= 30);
+}
+function buildRelationGraph() {
+  const nodes = (allWords || []).map(w => ({
+    id: w.id, hw: w.headword, norm: normHw(w.headword),
+    page: w.page_no, tags: w.tags || []
+  }));
+  const byId = new Map(nodes.map(n => [String(n.id), n]));
+  const byNorm = new Map();
+  nodes.forEach(n => { if (n.norm && !byNorm.has(n.norm)) byNorm.set(n.norm, n); });
+
+  const edgeMap = new Map();   // key -> edge（去重）
+  const external = new Map();  // 库外关联词 → Set<词>
+  const addEdge = (aId, bNorm, type, label) => {
+    const a = byId.get(String(aId));
+    if (!a) return;
+    const b = byNorm.get(normHw(bNorm));
+    if (!b || b.id === a.id) {
+      // 库外词：记录 a → 该词（供词条显示"关联词未收录"）
+      const ext = normHw(bNorm);
+      if (ext && ext !== a.norm) {
+        if (!external.has(a.id)) external.set(a.id, new Map());
+        const m = external.get(a.id);
+        if (!m.has(type)) m.set(type, new Set());
+        m.get(type).add(String(bNorm).trim());
+      }
+      return;
+    }
+    const lo = Math.min(Number(a.id), Number(b.id)), hi = Math.max(Number(a.id), Number(b.id));
+    const key = `${lo}|${hi}|${type}`;
+    if (!edgeMap.has(key)) edgeMap.set(key, { a: lo, b: hi, type, label: label || '' });
+  };
+
+  for (const w of allWords || []) {
+    // 派生：本词派生自谁
+    if (w.derived_from) addEdge(w.id, w.derived_from, '派生', '派生自');
+    // 派生：谁派生自本词（parent_word_id 反向）
+    if (w.parent_word_id) addEdge(w.id, byId.get(String(w.parent_word_id))?.hw || '', '派生', '派生出');
+    // 反义：义项里的 antonym（可能带"反"前缀）
+    for (const s of (w.senses || [])) {
+      if (s.antonym) {
+        const parts = splitWordList(String(s.antonym).replace(/^反[:：]?\s*/, ''));
+        parts.forEach(p => addEdge(w.id, p, '反义', '反'));
+      }
+    }
+    // 同义/辨析/同族/反：notes 的 title 词清单
+    for (const n of (w.notes || [])) {
+      const t = String(n.note_type || '').trim();
+      if (!['同', '辨', '反', '同族词'].includes(t)) continue;
+      const type = t === '同族词' ? '同族' : (t === '辨' ? '辨析' : (t === '反' ? '反义' : '同义'));
+      splitWordList(n.title).forEach(p => addEdge(w.id, p, type, t));
+    }
+  }
+
+  // 邻接表
+  const adj = new Map(nodes.map(n => [String(n.id), []]));
+  const edges = Array.from(edgeMap.values());
+  for (const e of edges) {
+    adj.get(String(e.a))?.push({ id: e.b, type: e.type });
+    adj.get(String(e.b))?.push({ id: e.a, type: e.type });
+  }
+  // external 转普通对象：{ wordId: { type: [词...] } }
+  const extObj = {};
+  external.forEach((m, id) => { extObj[id] = {}; m.forEach((set, type) => { extObj[id][type] = Array.from(set); }); });
+  relGraph = { nodes, edges, byId, byNorm, adj, external: extObj };
+  return relGraph;
+}
+
+// 取某词的关系摘要（供词卡渲染）：{ type: [{hw,id,inLib}] } + external
+function relationsOf(wordId) {
+  const g = relGraph;
+  const out = {};
+  const adj = g.adj?.get(String(wordId)) || [];
+  for (const r of adj) {
+    const n = g.byId.get(String(r.id));
+    if (!n) continue;
+    (out[r.type] = out[r.type] || []).push({ hw: n.hw, id: n.id, inLib: true });
+  }
+  const ext = g.external?.[String(wordId)] || {};
+  for (const [type, arr] of Object.entries(ext)) {
+    arr.forEach(hw => (out[type] = out[type] || []).push({ hw, inLib: false }));
+  }
+  // 每类去重
+  for (const k of Object.keys(out)) {
+    const seen = new Set();
+    out[k] = out[k].filter(x => { const kk = normHw(x.hw); if (seen.has(kk)) return false; seen.add(kk); return true; });
+  }
+  return out;
+}
+
 async function refreshWords() {
   if (cfg.demo) {
     try { allWords = JSON.parse(localStorage.getItem(LS.demo) || '[]'); }
@@ -1622,6 +1732,7 @@ async function refreshWords() {
   });
   // 按 A–Z 排序（忽略大小写），供仿书本顺序滚动
   allWords.sort((a, b) => String(a.headword || '').toLowerCase().localeCompare(String(b.headword || '').toLowerCase()));
+  buildRelationGraph();   // 词间关系网（v2.13）
   rebuildTagFilter();
   resetWordList();
   updateBadge();
@@ -1801,7 +1912,122 @@ function initAzIndex() {
 function updateAzVisibility() {
   const el = document.getElementById('azIndex');
   if (!el) return;
-  el.classList.toggle('show', document.getElementById('page-words').classList.contains('active') && filteredWords.length > 0);
+  el.classList.toggle('show', viewMode === 'list' && document.getElementById('page-words').classList.contains('active') && filteredWords.length > 0);
+}
+
+/* ================= 关系网总览视图（v2.13） ================= */
+let viewMode = 'list';       // 'list' | 'graph'
+let _graphTransform = { x: 0, y: 0, k: 1 };
+function setViewMode(mode) {
+  viewMode = mode;
+  document.querySelectorAll('#viewToggle .vt-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === mode));
+  const listV = document.getElementById('listView');
+  const graphV = document.getElementById('graphView');
+  const tagF = document.getElementById('tagFilter');
+  if (mode === 'graph') {
+    listV.style.display = 'none';
+    graphV.style.display = '';
+    tagF.style.display = 'none';
+    updateAzVisibility();         // A-Z 索引在关系网下隐藏
+    renderGraph();
+  } else {
+    graphV.style.display = 'none';
+    listV.style.display = '';
+    tagF.style.display = '';
+    updateAzVisibility();
+  }
+}
+
+let _graphZoom = 1;
+function renderGraph() {
+  const host = document.getElementById('graphCanvas');
+  if (!host) return;
+  const g = relGraph;
+  // 只画"有关系"的节点（至少一条边），孤立词不画，保证网清晰
+  const degree = new Map();
+  (g.edges || []).forEach(e => { degree.set(e.a, (degree.get(e.a)||0)+1); degree.set(e.b, (degree.get(e.b)||0)+1); });
+  const nodes = (g.nodes || []).filter(n => degree.get(n.id));
+  if (!nodes.length) {
+    host.innerHTML = `<div class="graph-empty"><div style="font-size:30px">✳</div>
+      <div>词库里还没有足够的关系可连线</div><div style="font-size:11px">多录几页后，派生/同义/反义关系会自动连成网</div></div>`;
+    return;
+  }
+  const W = host.clientWidth || 800, H = host.clientHeight || 520;
+  // 连通分量分组布局（v2.13）：有关系的词按"词族"聚成一簇，簇间网格排布。
+  // 比纯力导向更稳定：不会贴边、不会挤成一团，派生链清晰可读。
+  (function clusterLayout() {
+    const parent = new Map(nodes.map(n => [n.id, n.id]));
+    const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(rb, ra); };
+    for (const e of (g.edges || [])) union(e.a, e.b);
+    // 按根分组
+    const groupsMap = new Map();
+    nodes.forEach(n => { const r = find(n.id); if (!groupsMap.has(r)) groupsMap.set(r, []); groupsMap.get(r).push(n); });
+    const groups = Array.from(groupsMap.values()).sort((a, b) => b.length - a.length);
+    // 网格排布：列数按画布宽高比估算
+    const cols = Math.max(1, Math.round(Math.sqrt(groups.length * (W / H) * 1.6)));
+    const rows = Math.ceil(groups.length / cols);
+    const cellW = W / cols, cellH = H / rows;
+    groups.forEach((grp, gi) => {
+      const gx = (gi % cols) * cellW, gy = Math.floor(gi / cols) * cellH;
+      const ccx = gx + cellW / 2, ccy = gy + cellH / 2;
+      if (grp.length === 1) {
+        grp[0]._x = ccx; grp[0]._y = ccy;
+      } else {
+        // 簇内小环形排布，半径随簇大小自适应
+        const r = Math.min(cellW, cellH) * (grp.length <= 4 ? 0.28 : 0.34);
+        grp.forEach((n, i) => {
+          const a = i / grp.length * Math.PI * 2 - Math.PI / 2;
+          n._x = ccx + r * Math.cos(a);
+          n._y = ccy + r * Math.sin(a);
+        });
+      }
+    });
+  })();
+  const posOf = id => { const n = g.byId.get(String(id)); return n ? { x: n._x, y: n._y } : null; };
+  const colorOfNode = n => {
+    if ((n.tags || []).includes('进度')) return '#f59e0b';
+    if ((n.tags || []).includes('已会')) return '#16a34a';
+    if ((n.tags || []).includes('不会')) return '#dc2626';
+    return '#2563eb';
+  };
+  const edgesSvg = (g.edges || []).map(e => {
+    const p = posOf(e.a), q = posOf(e.b);
+    if (!p || !q) return '';
+    return `<line class="graph-edge ${esc(e.type)}" x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}"/>`;
+  }).join('');
+  const nodesSvg = nodes.map(n => `
+    <g class="graph-node" onclick="graphNodeClick('${esc(n.hw)}')">
+      <circle cx="${n._x}" cy="${n._y}" r="10" fill="${colorOfNode(n)}"><title>${esc(n.hw)}</title></circle>
+      <text x="${n._x}" y="${n._y + 22}">${esc(n.hw)}</text>
+    </g>`).join('');
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <g id="graphZoomLayer">${edgesSvg}${nodesSvg}</g></svg>`;
+  _graphTransform = { x: 0, y: 0, k: 1 };
+  setupGraphPanZoom(host);
+}
+function graphNodeClick(hw) { jumpToWord(hw); }
+
+function setupGraphPanZoom(host) {
+  const svg = host.querySelector('svg');
+  const layer = host.querySelector('#graphZoomLayer');
+  if (!svg || !layer) return;
+  const apply = () => layer.setAttribute('transform', `translate(${_graphTransform.x},${_graphTransform.y}) scale(${_graphTransform.k})`);
+  let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0, moved = 0;
+  host.onpointerdown = e => { dragging = true; moved = 0; sx = e.clientX; sy = e.clientY; ox = _graphTransform.x; oy = _graphTransform.y; host.classList.add('dragging'); };
+  window.onpointermove = e => {
+    if (!dragging) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+    _graphTransform.x = ox + dx; _graphTransform.y = oy + dy; apply();
+  };
+  window.onpointerup = () => { dragging = false; host.classList.remove('dragging'); };
+  host.onwheel = e => {
+    e.preventDefault();
+    const k = Math.min(3, Math.max(0.4, _graphTransform.k * (e.deltaY > 0 ? 0.9 : 1.1)));
+    _graphTransform.k = k; apply();
+  };
 }
 
 // 依据搜索词 + 当前标签，计算过滤后的列表
@@ -1956,6 +2182,28 @@ function wordCardHtml(w, i) {
       .map(line => `<div class="note-line">${esc(line).replace(/^•\s*/, '• ')}</div>`).join('');
     return `<div class="vw-note note-${esc(t)}"><span class="note-badge">${esc(t)}</span>${title}<div class="note-body">${content}</div></div>`;
   }).join('');
+  // 词间关系网 chips（v2.13）：派生/同义/反义/辨析/同族，点击跳转对应词卡
+  const relations = (cfg.demo || (w.id != null && relGraph.byId?.has(String(w.id)))) ? relationsOf(w.id) : {};
+  const REL_META = {
+    '派生': { cls: 'rel-derive', ico: '↳', label: '派生' },
+    '同义': { cls: 'rel-syn',    ico: '≈', label: '同义' },
+    '同族': { cls: 'rel-family', ico: '⁂', label: '同族' },
+    '辨析': { cls: 'rel-diff',   ico: '⚖', label: '辨析' },
+    '反义': { cls: 'rel-ant',    ico: '↔', label: '反义' },
+  };
+  let relationsHtml = '';
+  const relParts = [];
+  for (const [type, items] of Object.entries(relations)) {
+    if (!items.length) continue;
+    const meta = REL_META[type] || { cls: 'rel-other', ico: '·', label: type };
+    const chips = items.map(it => it.inLib
+      ? `<button class="rel-chip ${meta.cls}" onclick="jumpToWord('${esc(it.hw)}')" title="跳转到 ${esc(it.hw)}">${esc(it.hw)}</button>`
+      : `<span class="rel-chip rel-ext" title="关联词，尚未收录">${esc(it.hw)}</span>`).join('');
+    relParts.push(`<span class="rel-group"><span class="rel-label">${meta.ico} ${meta.label}</span>${chips}</span>`);
+  }
+  if (relParts.length) {
+    relationsHtml = `<div class="word-relations">${relParts.join('')}</div>`;
+  }
   const key = w.id != null ? ('id' + w.id) : ('hw' + esc(w.headword));
   // 新三态徽标：已会 / 不会 / 进度（互斥逻辑见 toggleStudyState）
   const tags = w.tags || [];
@@ -1987,6 +2235,7 @@ function wordCardHtml(w, i) {
     <div class="word-body">
       ${senses || '<div style="font-size:13px;color:var(--muted);padding:8px 0">（无详细义项）</div>'}
       ${notesHtml}
+      ${relationsHtml}
     </div>
   </div>`;
 }
@@ -2007,6 +2256,38 @@ function toggleCard(key) {
     return;
   }
   el.classList.toggle('open');
+}
+
+/* ---------------- 关系网跳转：定位→展开→高亮 ---------------- */
+function jumpToWord(headword) {
+  const norm = normHw(headword);
+  const target = allWords.find(w => normHw(w.headword) === norm);
+  if (!target) { toast(`词库中还没有「${headword}」`); return; }
+  // 若目标被搜索/标签筛选隐藏，先清掉筛选让它出现
+  const q = document.getElementById('searchInput');
+  const qVal = (q && q.value || '').trim();
+  const hiddenBySearch = qVal && !String(target.headword).toLowerCase().includes(qVal.toLowerCase())
+    && !JSON.stringify(target.senses || []).toLowerCase().includes(qVal.toLowerCase());
+  const hiddenByTag = activeTag !== '__all__' && !(target.tags || []).includes(activeTag);
+  if (hiddenBySearch && q) q.value = '';
+  if (hiddenByTag) activeTag = '__all__';
+  if (hiddenBySearch || hiddenByTag) {
+    rebuildTagFilter();
+    resetWordList();
+  }
+  // 确保目标已渲染（无限滚动可能还没渲染到）
+  let idx = filteredWords.findIndex(w => String(w.id) === String(target.id));
+  if (idx < 0) idx = filteredWords.findIndex(w => normHw(w.headword) === norm);
+  if (idx < 0) { toast(`未找到「${headword}」`); return; }
+  let guard = 0;
+  while (renderedCount <= idx && guard++ < 500) appendWords();
+  const key = target.id != null ? ('id' + target.id) : ('hw' + esc(target.headword));
+  const el = document.getElementById('wc-' + key);
+  if (!el) { toast(`「${headword}」尚未加载`); return; }
+  collapseRevealed();
+  el.classList.add('open', 'jump-flash');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => el.classList.remove('jump-flash'), 1600);
 }
 
 /* ---------------- 长按检测：左滑露出操作条 ---------------- */

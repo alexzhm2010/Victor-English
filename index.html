@@ -209,6 +209,33 @@ input[type=file]{display:none}
 .tag-chip.active[data-tag="进度"]{background:#d97706}
 .tag-chip.active:not([data-tag="__all__"]):not([data-tag="不会"]):not([data-tag="已会"]):not([data-tag="进度"]){background:#7c3aed}
 
+/* 视图切换：书本列表 / 关系网 */
+.view-toggle{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  background:var(--card);flex-shrink:0;box-shadow:var(--shadow)}
+.vt-btn{width:34px;height:34px;border:0;background:transparent;color:var(--muted);
+  font-size:16px;font-family:inherit;cursor:pointer;transition:.15s;line-height:1}
+.vt-btn.active{background:var(--primary-d);color:#fff;font-weight:700}
+
+/* 关系网总览视图 */
+.graph-view{margin-top:4px}
+.graph-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:2px 0 8px}
+.graph-legend span{display:inline-flex;align-items:center;gap:5px}
+.graph-legend .lg{width:10px;height:10px;border-radius:50%;display:inline-block}
+.lg-derive{background:#7c3aed}.lg-syn{background:#0891b2}.lg-diff{background:#d97706}.lg-ant{background:#db2777}
+.graph-canvas{position:relative;width:100%;height:520px;border:1px solid #dbe4ef;border-radius:12px;
+  background:radial-gradient(circle at 50% 40%,#f7faff,#eef3fa);overflow:hidden;touch-action:none;cursor:grab}
+.graph-canvas.dragging{cursor:grabbing}
+.graph-canvas svg{width:100%;height:100%;display:block}
+.graph-node circle{stroke:#fff;stroke-width:1.5;cursor:pointer;transition:r .15s}
+.graph-node:hover circle{r:13}
+.graph-node text{font-size:10px;fill:#334155;pointer-events:none;text-anchor:middle;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round}
+.graph-edge{stroke-width:1.4;opacity:.5}
+.graph-edge.派生{stroke:#7c3aed}.graph-edge.同义,.graph-edge.同族{stroke:#0891b2}
+.graph-edge.辨析{stroke:#d97706}.graph-edge.反义{stroke:#db2777}
+.graph-tip{font-size:11px;color:var(--muted);text-align:center;margin-top:6px}
+.graph-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:8px;color:var(--muted);font-size:13px;text-align:center;padding:20px}
+
 .list-summary{font-size:13px;color:var(--muted);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums}
 .list-summary b{color:var(--primary-d);font-size:17px;font-weight:800}
 .list-summary .frac-sep{color:#b9c0cc;margin:0 2px;font-size:14px}
@@ -339,6 +366,28 @@ input[type=file]{display:none}
 .vw-note.note-句型 .note-badge{background:#ea580c}
 .vw-note .note-body .note-line{position:relative}
 .word-card[data-derived="1"] .word-name{color:#6d28d9}
+
+/* ---------- 词间关系网 chips（v2.13） ---------- */
+.word-relations{display:flex;flex-direction:column;gap:5px;margin:9px 0 2px 8px;padding:8px 10px;
+  background:linear-gradient(135deg,#f7fbff,#f0f6ff);border:1px solid #d9e7f7;border-radius:8px}
+.rel-group{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.rel-label{font-size:10.5px;font-weight:700;color:#64748b;min-width:38px;white-space:nowrap}
+.rel-chip{display:inline-flex;align-items:center;border:1px solid transparent;border-radius:11px;
+  min-height:22px;padding:2px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:transform .12s,box-shadow .12s}
+.rel-chip:hover{transform:translateY(-1px);box-shadow:0 2px 7px rgba(0,0,0,.12)}
+.rel-chip.rel-derive{color:#6d28d9;border-color:#ddd0f5;background:#faf7ff}
+.rel-chip.rel-syn{color:#0e7490;border-color:#b6e3ea;background:#f2fbfd}
+.rel-chip.rel-family{color:#0369a1;border-color:#b9d9f2;background:#f3f9ff}
+.rel-chip.rel-diff{color:#b45309;border-color:#f3dcb2;background:#fffbf3}
+.rel-chip.rel-ant{color:#be185d;border-color:#f5c6dc;background:#fff5f9}
+.rel-chip.rel-ext{color:#94a3b8;border-style:dashed;cursor:default;background:transparent}
+.rel-chip.rel-ext:hover{transform:none;box-shadow:none}
+/* 跳转高亮闪烁 */
+@keyframes jumpPulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.55);background:rgba(219,234,254,.7)}
+  70%{box-shadow:0 0 0 10px rgba(37,99,235,0);background:rgba(219,234,254,.35)}
+  100%{box-shadow:0 0 0 0 rgba(37,99,235,0);background:transparent}}
+.word-card.jump-flash{animation:jumpPulse 1.6s ease-out;border-radius:6px}
 .item{margin:3px 0 3px 26px;font-size:13px}
 .item .en{font-family:Georgia,serif;font-style:italic;color:#26303d}
 .item .zh{color:#5b6675;margin-left:5px}
@@ -583,7 +632,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
   <div class="header-right">
     <span id="syncChip" class="sync-chip" onclick="openSyncGate(true)">同步码</span>
-    <span id="headerVersion" class="version-mini">v2.12.0</span>
+    <span id="headerVersion" class="version-mini">v2.13.0</span>
   </div>
 </header>
 
@@ -610,7 +659,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
     <span class="side-sync-code" id="sideSyncCode">—</span>
     <span class="side-sync-edit">切换 ›</span>
   </div>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.12.0</b></div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.13.0</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -664,11 +713,25 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input type="text" id="searchInput" placeholder="搜索英文单词或中文释义…" oninput="onSearchChange()">
     </div>
+    <div class="view-toggle" id="viewToggle" title="切换视图">
+      <button class="vt-btn active" data-view="list" onclick="setViewMode('list')" title="书本列表">▤</button>
+      <button class="vt-btn" data-view="graph" onclick="setViewMode('graph')" title="关系网">✳</button>
+    </div>
     <div class="list-summary" id="listSummary"><b>0</b><span class="frac-sep">/</span>0</div>
   </div>
   <div class="tag-filter" id="tagFilter"></div>
-  <div id="wordList" class="book-list"></div>
-  <div id="scrollSentinel" class="scroll-sentinel"><span class="mini-spinner"></span> 加载更多…</div>
+  <div id="listView">
+    <div id="wordList" class="book-list"></div>
+    <div id="scrollSentinel" class="scroll-sentinel"><span class="mini-spinner"></span> 加载更多…</div>
+  </div>
+  <div id="graphView" class="graph-view" style="display:none">
+    <div class="graph-legend">
+      <span><i class="lg lg-derive"></i>派生</span><span><i class="lg lg-syn"></i>同义/同族</span>
+      <span><i class="lg lg-diff"></i>辨析</span><span><i class="lg lg-ant"></i>反义</span>
+    </div>
+    <div id="graphCanvas" class="graph-canvas"></div>
+    <div class="graph-tip" id="graphTip">点击节点跳转到该词条 · 拖动可平移 · 滚轮缩放</div>
+  </div>
 </section>
 
 <!-- ============ 设置页 ============ -->
@@ -714,7 +777,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
   <div class="version-card" id="versionCard">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.12.0</span>
+      <span class="version-badge" id="versionBadge">v2.13.0</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
