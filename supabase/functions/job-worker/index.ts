@@ -220,6 +220,63 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---------- setpage：手动修正某页识别错误的页码（首字母页被误读成页码）----------
+    // 精准定位：用该页 scan 回执里的词头白名单 + 旧页码 + 书名，只迁这批词，
+    // 绝不碰同一旧页码下其它真实词条（如 P19 真实的 allow/allocate 那批）。
+    if (action === "setpage") {
+      const { page_id, sync_code, new_page_no } = body;
+      const newNo = parseInt(new_page_no, 10);
+      if (!page_id || !sync_code || !(newNo > 0)) return json({ ok: false, error: "参数不完整或页码无效" }, 400);
+
+      const { data: pg, error: pgErr } = await supa.from("vw_scan_job_pages")
+        .select("id,job_id,sync_code,page_no,image_url,image_path,result,status")
+        .eq("id", Number(page_id)).maybeSingle();
+      if (pgErr) return json({ ok: false, error: "查询明细失败：" + pgErr.message }, 500);
+      if (!pg) return json({ ok: false, error: "明细页不存在 id=" + page_id }, 404);
+      if (pg.sync_code !== sync_code) return json({ ok: false, error: "同步码不匹配，无权修改" }, 403);
+      // book_id 在任务主表上，按 job_id 取
+      const { data: jRow } = await supa.from("vw_scan_jobs").select("book_id").eq("id", pg.job_id).maybeSingle();
+      const bookId = jRow?.book_id || "victor";
+      const oldNo = pg.page_no;
+      if (!(oldNo > 0)) return json({ ok: false, error: "该页尚无页码，无法修正" }, 400);
+      if (oldNo === newNo) return json({ ok: true, note: "页码未变", page_no: oldNo });
+
+      // 词头白名单：来自本页 scan 回执，最精准的锚点
+      const words: string[] = Array.isArray(pg.result?.words) ? pg.result.words.map(String) : [];
+      if (!words.length) return json({ ok: false, error: "该页没有可迁移的词条记录" }, 400);
+
+      // 1) 迁移词条页码：限 书名 + 旧页码 + 词头白名单
+      let moved = 0;
+      for (const hw of words) {
+        const { data: upd } = await supa.from("vw_words")
+          .update({ page_no: newNo })
+          .eq("book_id", bookId).eq("page_no", oldNo).eq("headword", hw)
+          .select("id");
+        if (upd && upd.length) moved += upd.length;
+      }
+
+      // 2) 更新任务明细页码 + 回执里的 page_no
+      const newResult = { ...(pg.result || {}), page_no: newNo, page_corrected_from: oldNo };
+      await supa.from("vw_scan_job_pages").update({
+        page_no: newNo, result: newResult,
+      }).eq("id", page_id);
+
+      // 3) 同步更新对应导入批次（按 image_url 精确定位）
+      if (pg.image_url) {
+        await supa.from("vw_scan_batches").update({ page_no: newNo })
+          .eq("book_id", bookId).eq("image_url", pg.image_url);
+      }
+
+      // 4) 握手池：把该页两侧记录的页码同步改正（避免跨页上下文仍指向错页）
+      await supa.from("vw_page_handshakes").update({ page_no: newNo })
+        .eq("book_id", bookId).eq("page_no", oldNo);
+      await supa.from("vw_page_handshakes").update({ neighbor_page_no: newNo })
+        .eq("book_id", bookId).eq("neighbor_page_no", oldNo);
+
+      return json({ ok: true, page_id, old_page_no: oldNo, new_page_no: newNo,
+        words_moved: moved, word_heads: words.length });
+    }
+
     // ---------- accept：验收归档（服务端校验 sync_code）----------
     if (action === "accept") {
       const { job_id, sync_code } = body;

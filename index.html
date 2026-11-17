@@ -542,7 +542,14 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 .job-card.open .job-detail{display:block}
 .job-page{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px dashed var(--line)}
 .job-page:last-child{border-bottom:none}
-.job-pg-no{font-size:12px;font-weight:800;color:var(--primary);min-width:46px}
+.job-pg-no{font-size:12px;font-weight:800;color:var(--primary);min-width:46px;cursor:pointer;position:relative;
+  border-bottom:1px dashed var(--primary);padding-bottom:1px}
+.job-pg-no:active{color:var(--primary-d,#356)}
+.job-pg-edit{display:inline-flex;align-items:center;gap:4px}
+.job-pg-edit input{width:52px;font-size:12px;font-weight:800;color:var(--primary);border:1.5px solid var(--primary);
+  border-radius:6px;padding:2px 4px;text-align:center;background:var(--card)}
+.job-pg-edit button{font-size:10px;font-weight:800;color:#fff;background:var(--primary);border:none;border-radius:5px;padding:3px 6px;cursor:pointer}
+.job-pg-edit button.cancel{background:var(--line);color:var(--muted)}
 .job-pg-st{font-size:11px;font-weight:700;padding:2px 7px;border-radius:7px}
 .job-pg-st.pending{background:#e0e7ff;color:#4338ca}
 .job-pg-st.running{background:#fef3c7;color:#b45309}
@@ -719,7 +726,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
   <h1><span class="brand-mark">V</span>维克多背单词</h1>
   <div class="header-right">
     <span id="syncChip" class="sync-chip" onclick="openSyncGate(true)">同步码</span>
-    <span id="headerVersion" class="version-mini">v2.16.1</span>
+    <span id="headerVersion" class="version-mini">v2.16.2</span>
   </div>
 </header>
 
@@ -750,7 +757,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
     <span class="side-sync-code" id="sideSyncCode">—</span>
     <span class="side-sync-edit">切换 ›</span>
   </div>
-  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.16.1</b></div>
+  <div class="side-foot">维克多背单词 · <b id="sideVersion">v2.16.2</b></div>
 </aside>
 
 <!-- ============ 扫描页 ============ -->
@@ -895,7 +902,7 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 
   <div class="version-card" id="versionCard">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.16.1</span>
+      <span class="version-badge" id="versionBadge">v2.16.2</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>

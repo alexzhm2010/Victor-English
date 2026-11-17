@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.16.2', date: '2026-11-18', items: [
+    '任务清单逐页页码可手动修正：首字母页被误读成页码时，点页码填正确值，自动把该页词条精准迁移到新页码，不误伤同页其它词',
+    '同步修正导入批次与跨页上下文的页码，修正记录留痕可追溯',
+  ]},
   { v: '2.16.1', date: '2026-11-17', items: [
     '导入记录清单改为按页码倒序（大页码在前），最新扫描的页一眼可见',
   ]},
@@ -2554,6 +2558,7 @@ let jobPages = {};              // job_id -> 明细页数组
 let jobTab = 'active';          // active | accepted
 let jobPollTimer = null;        // 有进行中任务时的轮询定时器
 const expandedJobs = new Set();
+let _jobEditingPage = null;     // 正在编辑页码的明细 id
 
 /* ---------------- 云端任务执行清单（v2.16）---------------- */
 function jobStatusMeta(st) {
@@ -2654,8 +2659,15 @@ function renderJobs() {
       else info = '等待云端执行';
       const retry = p.status === 'error'
         ? `<button class="job-retry" onclick="event.stopPropagation();retryJobPage(${p.id})">重试</button>` : '';
+      // 页码可点开编辑（首字母页被误读成页码时手动修正）
+      const pageCell = _jobEditingPage === p.id
+        ? `<span class="job-pg-edit"><input type="number" id="jobPgInput_${p.id}" value="${p.page_no || ''}" min="1" inputmode="numeric"
+             onkeydown="if(event.key==='Enter')submitJobPageNo(${p.id});if(event.key==='Escape')cancelJobPageEdit()">
+           <button onclick="event.stopPropagation();submitJobPageNo(${p.id})">存</button>
+           <button class="cancel" onclick="event.stopPropagation();cancelJobPageEdit()">×</button></span>`
+        : `<span class="job-pg-no" title="点此修改页码" onclick="event.stopPropagation();startJobPageEdit(${p.id})">${pg}</span>`;
       return `<div class="job-page">
-        <span class="job-pg-no">${pg}</span>
+        ${pageCell}
         <span class="job-pg-st ${pm.cls}">${pm.txt}</span>
         <span class="job-pg-info" title="${esc(String(p.error_msg || info))}">${info}</span>
         ${retry}
@@ -2716,6 +2728,38 @@ async function retryJobPage(pageId) {
     toast('已重新排队，云端会自动重试该页');
     loadJobs(true);
   } catch (e) { toast('重试失败：' + e.message); }
+}
+
+// 手动修正页码：首字母页被误读成页码时，点页码改正确值
+function startJobPageEdit(pageId) {
+  _jobEditingPage = pageId;
+  renderJobs();
+  const inp = document.getElementById('jobPgInput_' + pageId);
+  if (inp) { inp.focus(); inp.select(); }
+}
+function cancelJobPageEdit() { _jobEditingPage = null; renderJobs(); }
+async function submitJobPageNo(pageId) {
+  if (!sync || !sync.code) return;
+  const inp = document.getElementById('jobPgInput_' + pageId);
+  const v = inp ? parseInt(inp.value, 10) : 0;
+  if (!(v > 0)) { toast('请输入有效页码'); return; }
+  const oldRow = Object.values(jobPages).flat().find(p => p.id === pageId);
+  if (oldRow && oldRow.page_no === v) { _jobEditingPage = null; renderJobs(); return; }
+  _jobEditingPage = null;
+  toast('正在修正页码并迁移该页词条…');
+  try {
+    const r = await fetchWithRetry(`${cfg.url}/functions/v1/job-worker`, {
+      method: 'POST',
+      headers: { ...SYNC_HEADERS(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setpage', page_id: pageId, sync_code: sync.code, new_page_no: v }),
+    }, { timeout: 30000, retries: 1, label: '修正页码' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || '修正失败');
+    toast(`页码已改为 P${String(v).padStart(3, '0')}，迁移 ${d.words_moved || 0} 个词条`);
+    loadJobs(true);
+    invalidateProgressCache();
+    updateProgressDisplay();
+  } catch (e) { toast('修正失败：' + e.message); loadJobs(true); }
 }
 
 function fmtRecTime(iso) {
