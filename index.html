@@ -93,20 +93,21 @@ input[type=file]{display:none}
 .hint b{color:var(--text)}
 
 /* ---------- 词库页（仿书本 · 单列无限滚动） ---------- */
-.searchbar{position:relative;margin-bottom:10px}
-.search-wrap{position:relative}
-.searchbar input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 14px 12px 40px;
-  font-size:15px;background:var(--card);box-shadow:var(--shadow);font-family:inherit;outline:none}
-.searchbar input:focus{border-color:var(--primary)}
-.searchbar svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);
-  width:18px;height:18px;stroke:var(--muted)}
+/* 表头：搜索框 + 统计 同一行 */
+.words-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.search-wrap{position:relative;flex:1;min-width:0}
+.search-wrap input{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 12px 9px 36px;
+  font-size:14px;background:var(--card);box-shadow:var(--shadow);font-family:inherit;outline:none}
+.search-wrap input:focus{border-color:var(--primary)}
+.search-wrap svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  width:16px;height:16px;stroke:var(--muted)}
 
-/* 标签快捷筛选 */
-.tag-filter{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
-.tag-chip{border:1px solid var(--line);background:var(--card);border-radius:16px;
-  padding:5px 12px;font-size:12px;font-family:inherit;cursor:pointer;color:var(--muted);
+/* 标签快捷筛选（收紧） */
+.tag-filter{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px}
+.tag-chip{border:1px solid var(--line);background:var(--card);border-radius:14px;
+  padding:3px 10px;font-size:11px;font-family:inherit;cursor:pointer;color:var(--muted);
   display:inline-flex;align-items:center;gap:4px;transition:.15s}
-.tag-chip .dot{width:8px;height:8px;border-radius:50%}
+.tag-chip .dot{width:7px;height:7px;border-radius:50%}
 .tag-chip.active{border-color:transparent;color:#fff;font-weight:700}
 .tag-chip.active[data-tag="__all__"]{background:var(--primary-d)}
 .tag-chip.active[data-tag="不会"]{background:#dc2626}
@@ -114,30 +115,29 @@ input[type=file]{display:none}
 .tag-chip.active[data-tag="已掌握"]{background:#16a34a}
 .tag-chip.active:not([data-tag="__all__"]):not([data-tag="不会"]):not([data-tag="不熟"]):not([data-tag="已掌握"]){background:#7c3aed}
 
-.book-tip{font-size:11.5px;color:#92600e;background:#fff8e6;border:1px solid #ffe08a;
-  border-radius:9px;padding:7px 11px;margin-bottom:10px;line-height:1.5}
-.list-summary{font-size:12px;color:var(--muted);margin:2px 2px 8px}
+.list-summary{font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.list-summary b{color:var(--primary-d);font-size:14px}
 
 /* 书本纸张风格容器 */
 .book-list{background:linear-gradient(#fffdf8,#fffaf0);border:1px solid #e9dfc8;
-  border-radius:10px;padding:4px 14px;box-shadow:0 2px 14px rgba(90,70,30,.07)}
+  border-radius:10px;padding:2px 12px;box-shadow:0 2px 14px rgba(90,70,30,.07)}
 .scroll-sentinel{text-align:center;color:var(--muted);font-size:12px;padding:14px 0 4px;min-height:20px}
 .scroll-sentinel.hidden{display:none}
 
-/* 词条：词头一行（深蓝加粗）+ 音标斜体 */
-.word-card{border-bottom:1px solid #ece2cc;padding:11px 2px}
+/* 词条：词头一行（深蓝加粗）+ 音标斜体（压紧排版） */
+.word-card{border-bottom:1px solid #ece2cc;padding:6px 2px}
 .word-card:last-child{border-bottom:none}
-.word-hd{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;cursor:pointer;position:relative}
+.word-hd{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;cursor:pointer;position:relative}
 .word-hd:active{opacity:.7}
-.word-name{font-family:Georgia,"Times New Roman",serif;font-size:20px;font-weight:800;
+.word-name{font-family:Georgia,"Times New Roman",serif;font-size:17px;font-weight:800;
   color:#1d3f7a;letter-spacing:.2px}
-.word-ph{font-family:Georgia,serif;color:#8a7f6d;font-size:13px;font-style:italic}
-.word-def{flex:1;font-size:13px;color:#7a6f5c;text-align:right;white-space:nowrap;
+.word-ph{font-family:Georgia,serif;color:#8a7f6d;font-size:12px;font-style:italic}
+.word-def{flex:1;font-size:12px;color:#7a6f5c;text-align:right;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .level{font-size:10px;color:#6b21a8;background:#f3e8ff;padding:1px 6px;border-radius:6px}
-.arrow{width:14px;stroke:#b0a58f;transition:transform .2s;flex-shrink:0;align-self:center}
+.arrow{width:12px;stroke:#b0a58f;transition:transform .2s;flex-shrink:0;align-self:center}
 .word-card.open .arrow{transform:rotate(90deg)}
-.word-body{display:none;padding:6px 0 6px 8px}
+.word-body{display:none;padding:4px 0 4px 8px}
 .word-card.open .word-body{display:block}
 
 /* 学习标签徽标（词头旁，不同颜色） */
@@ -148,13 +148,13 @@ input[type=file]{display:none}
 .study-tag.custom{background:#ede9fe;color:#6d28d9}
 
 /* 义项：实心圆序号 + 彩色词性 */
-.sense{padding:8px 0 3px;border-bottom:1px dashed #e6dcc4}
+.sense{padding:5px 0 2px;border-bottom:1px dashed #e6dcc4}
 .sense:last-child{border-bottom:none}
-.sense-hd{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin-bottom:4px}
-.no{width:19px;height:19px;background:#1d3f7a;color:#fff;border-radius:50%;
-  font-size:11px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
-.pos{color:#c0392b;font-style:italic;font-size:13px;font-weight:700}
-.def{font-weight:600;font-size:14px;color:#243247}
+.sense-hd{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-bottom:2px}
+.no{width:17px;height:17px;background:#1d3f7a;color:#fff;border-radius:50%;
+  font-size:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.pos{color:#c0392b;font-style:italic;font-size:12px;font-weight:700}
+.def{font-weight:600;font-size:13px;color:#243247}
 .tag{font-size:10px;padding:1px 6px;border-radius:7px}
 .tag-count{background:#e0e7ff;color:#3730a3}
 .tag-usage{background:#fef3c7;color:#92400e}
@@ -168,7 +168,6 @@ input[type=file]{display:none}
 .id-⊕{background:#dbeafe;color:#1d4ed8}
 .id-⊖{background:#fee2e2;color:#991b1b}
 .id-derived{background:#ede9fe;color:#5b21b6}
-.tag-freqlevel{background:#ccfbf1;color:#0f766e;font-weight:700}
 .tag-derived{background:#f5f3ff;color:#6d28d9}
 .eng-def{font-family:Georgia,serif;font-style:italic;font-size:12px;color:#64748b;margin:2px 0 4px 26px}
 .vw-note{position:relative;margin:8px 0 4px 8px;padding:8px 10px 8px 42px;background:linear-gradient(135deg,#eef2ff,#f8fafc);
@@ -373,7 +372,7 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
   <h1>单词扫描 · 背词器</h1>
   <div class="sub">
     <span id="modeBadge" class="mode-badge demo">演示模式</span>
-    <span id="headerVersion" class="version-mini">v2.1.1</span>
+    <span id="headerVersion" class="version-mini">v2.1.2</span>
     <span id="headerSub">拍照上传 · 扫描拆解 · 查询词库</span>
   </div>
 </header>
@@ -382,7 +381,7 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
 <section class="page active" id="page-scan">
   <div class="version-card">
     <div class="version-head" onclick="toggleChangelog()">
-      <span class="version-badge" id="versionBadge">v2.1.1</span>
+      <span class="version-badge" id="versionBadge">v2.1.2</span>
       <span class="version-date" id="versionDate">2026-11-17 更新</span>
       <span class="version-toggle" id="versionToggle">历史版本 ▾</span>
     </div>
@@ -443,15 +442,14 @@ nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8}
 
 <!-- ============ 词库页（仿书本 · 单列无限滚动） ============ -->
 <section class="page" id="page-words">
-  <div class="searchbar">
+  <div class="words-toolbar">
     <div class="search-wrap">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input type="text" id="searchInput" placeholder="搜索英文单词或中文释义…" oninput="onSearchChange()">
     </div>
+    <div class="list-summary" id="listSummary">共 <b>0</b> 词</div>
   </div>
   <div class="tag-filter" id="tagFilter"></div>
-  <div class="list-summary" id="listSummary">共 0 个单词</div>
-  <div class="book-tip">📖 长按词条可编辑内容、打学习标签；按 A–Z 顺序滚动浏览</div>
   <div id="wordList" class="book-list"></div>
   <div id="scrollSentinel" class="scroll-sentinel"><span class="mini-spinner"></span> 加载更多…</div>
 </section>
