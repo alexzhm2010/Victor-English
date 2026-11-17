@@ -772,7 +772,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.16.0",
+      engine_version: "v2.16.3",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,

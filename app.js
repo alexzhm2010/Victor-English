@@ -28,6 +28,11 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.16.3', date: '2026-11-18', items: [
+    '修根因：云端任务不再产生"仅识别/0词"的僵尸批次，批次随入库同步更新为已入库并计入词数统计',
+    '验收门禁：未验收任务产生的导入记录不再进入记录列表与统计，验收后才正式计入，避免错页数据污染',
+    '回填历史：修正既有任务的批次状态、词数与批次关联',
+  ]},
   { v: '2.16.2', date: '2026-11-18', items: [
     '任务清单逐页页码可手动修正：首字母页被误读成页码时，点页码填正确值，自动把该页词条精准迁移到新页码，不误伤同页其它词',
     '同步修正导入批次与跨页上下文的页码，修正记录留痕可追溯',
@@ -2782,6 +2787,27 @@ async function loadRecords() {
   }
   listEl.innerHTML = '<div class="rec-loading"><span class="mini-spinner"></span> 加载导入记录…</div>';
   try {
+    // 验收门禁（v2.16.3）：未验收云端任务关联的批次不进入记录列表与统计。
+    // 词已边跑边入库（沿用既定方案），但记录视为"待你核对"，验收后才正式计入。
+    let pendingBatchIds = new Set();
+    try {
+      const jr = await fetchWithRetry(
+        `${cfg.url}/rest/v1/vw_scan_jobs?book_id=eq.${encodeURIComponent(cfg.book)}&status=neq.accepted&select=id`,
+        { headers: SYNC_HEADERS() }, { timeout: 20000, retries: 1, label: '门禁-未验收任务' });
+      if (jr.ok) {
+        const jobs = await jr.json();
+        const ids = jobs.map(j => j.id);
+        if (ids.length) {
+          const pr = await fetchWithRetry(
+            `${cfg.url}/rest/v1/vw_scan_job_pages?job_id=in.(${ids.join(',')})&select=batch_id`,
+            { headers: SYNC_HEADERS() }, { timeout: 20000, retries: 1, label: '门禁-任务批次' });
+          if (pr.ok) {
+            (await pr.json()).forEach(p => { if (p.batch_id != null) pendingBatchIds.add(p.batch_id); });
+          }
+        }
+      }
+    } catch (_) { /* 门禁查询失败时保守放行，不阻断记录加载 */ }
+
     // 只取列表所需字段，不取 raw_result（展开时按需拉取）
     const sel = 'id,page_no,status,words_found,created_at,error_msg,prev_page_no,partial_words';
     const url = `${cfg.url}/rest/v1/vw_scan_batches?book_id=eq.${encodeURIComponent(cfg.book)}&select=${sel}&order=page_no.desc,created_at.desc`;
@@ -2790,7 +2816,7 @@ async function loadRecords() {
       const t = await r.text();
       throw new Error(`HTTP ${r.status}: ${t.slice(0, 120)}`);
     }
-    recordRows = await r.json();
+    recordRows = (await r.json()).filter(b => !pendingBatchIds.has(b.id));
     recordPage = 1;
     recordFilterPage = null;
     const ji = document.getElementById('recJumpInput');

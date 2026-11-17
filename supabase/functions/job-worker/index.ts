@@ -149,7 +149,10 @@ Deno.serve(async (req) => {
         }).eq("id", page.id);
 
         // 1) 识别真实页码（若已有 page_no 则跳过）
+        //    关键：拿到 detect 创建的 batch_id，传给 scan-page，让同一条批次随入库更新为 done
+        //    （v2.16.3 修复：此前 batchId 恒为 null，导致批次永远停在 detected/0词）
         let pageNo = page.page_no || 0;
+        let batchId = page.batch_id || null;
         if (!(pageNo > 0)) {
           const det = await callFn("detect-page", {
             imageUrl: page.image_url, imagePath: page.image_path,
@@ -158,8 +161,16 @@ Deno.serve(async (req) => {
           if (!det.ok) throw new Error("页码识别失败：" + (det.data?.error || ""));
           pageNo = Number(det.data?.page_no) || 0;
           if (!(pageNo > 0)) throw new Error("未能识别页码");
+          if (det.data?.batch_id) batchId = det.data.batch_id;
         }
-        await supa.from("vw_scan_job_pages").update({ page_no: pageNo }).eq("id", page.id);
+        // 兜底：若仍无 batch_id（如历史页重试），按 image_url 找已存在的 detected 批次复用
+        if (!batchId) {
+          const { data: bs } = await supa.from("vw_scan_batches")
+            .select("id").eq("image_url", page.image_url).eq("book_id", job.book_id)
+            .order("id", { ascending: true }).limit(1);
+          if (bs && bs.length) batchId = bs[0].id;
+        }
+        await supa.from("vw_scan_job_pages").update({ page_no: pageNo, batch_id: batchId }).eq("id", page.id);
 
         // 2) 跨页上下文：优先本任务上一页 done 的 nextContext，否则由 scan-page 自己查握手池
         let prevContext = null;
@@ -171,7 +182,7 @@ Deno.serve(async (req) => {
         // 3) 解析入库（复用 scan-page 全部幂等/握手池逻辑）
         const scan = await callFn("scan-page", {
           imageUrl: page.image_url, bookId: job.book_id, pageNo,
-          batchId: null, prevContext, force: false,
+          batchId, prevContext, force: false,
         });
         if (!scan.ok) throw new Error(scan.data?.error || "解析入库失败");
 
@@ -179,7 +190,7 @@ Deno.serve(async (req) => {
         await supa.from("vw_scan_job_pages").update({
           status: "done", words_found: d.words_found || 0,
           senses_found: d.senses_found || 0, api_calls: d.reconciliation?.api_calls || 1,
-          batch_id: d.batch_id || null, result: d, error_msg: null,
+          batch_id: batchId || d.batch_id || null, result: d, error_msg: null,
           finished_at: new Date().toISOString(),
         }).eq("id", page.id);
 
