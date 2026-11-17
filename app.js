@@ -17,6 +17,10 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.2.1', date: '2026-11-17', items: [
+    '新增「重扫此页」：已录入页漏词时用原页码重新识别并覆盖，不再误导改页码',
+    '重扫先清该页旧词条再入库，页码不变、数据不错乱',
+  ]},
   { v: '2.2.0', date: '2026-11-17', items: [
     '新增跨页「握手池」：残段常驻数据库，任意顺序/任意时间间隔录入都能自动补全',
     '先录后页再补前页：页首残段入池，前页录入后自动反向合并',
@@ -631,7 +635,7 @@ function renderBatch() {
     if (hasNote) {
       extra = `<div class="boundary-note recorded">✅ ${esc(it.result.note)}</div>`;
     } else if (isRecorded) {
-      extra = `<div class="boundary-note recorded">📖 第 ${it.pageNo} 页此前已录入词库，本次自动跳过、不重复入库。如需重扫，改一下左侧页码即可。</div>`;
+      extra = `<div class="boundary-note recorded">📖 第 ${it.pageNo} 页已在词库中，本次自动跳过。若漏录了单词，点右侧「重扫」会用原页码重新识别并覆盖本页。</div>`;
     } else if (it.status === 'detected' && it.pageNo > 0) {
       extra = `<div class="boundary-note">📖 从图片识别到第 ${it.pageNo} 页，可点左侧页码校正</div>`;
     }
@@ -653,9 +657,12 @@ function renderBatch() {
     const pgInput = running
       ? `<span class="pg-tag">P${it.pageNo || '?'}</span>`
       : `<span class="pg-wrap">P<input class="pg-input" type="number" min="0" value="${pageVal}" placeholder="页码" onchange="setPageNo('${it.id}',this.value)" onclick="event.stopPropagation()"></span>`;
-    // 单页操作按钮：失败可立即重试，未开始可单独启动，运行中禁用。不依赖全局 batchRunning。
+    // 单页操作按钮：失败可重试、未开始可单独启动、已录入可强制重扫。均不依赖全局 batchRunning。
     let runBtn = '';
-    if (!isRecorded) {
+    if (isRecorded && !running) {
+      // 已录入页：给「重扫」按钮，用原页码重新识别并覆盖，不改页码、不错页
+      runBtn = `<button class="batch-run retry" title="用原页码重新识别并覆盖本页" onclick="forceRescan('${it.id}')">重扫</button>`;
+    } else if (!isRecorded) {
       if (it.status === 'error') {
         runBtn = `<button class="batch-run retry" onclick="runOnePage('${it.id}')" ${running ? 'disabled' : ''}>重试</button>`;
       } else if (it.status === 'pending' || it.status === 'detected') {
@@ -838,7 +845,7 @@ async function detectAllPages() {
 }
 
 /* ---- 阶段②核心：对单页解析入库（独立 running），prevContext 为跨页上下文 ---- */
-async function parseOnePage(item, pageNo, prevContext, index) {
+async function parseOnePage(item, pageNo, prevContext, index, force = false) {
   item.running = true;
   item.status = 'parsing';
   item.error = null;
@@ -846,7 +853,7 @@ async function parseOnePage(item, pageNo, prevContext, index) {
   try {
     let result;
     if (cfg.demo) result = await demoScanOne(index || 0, prevContext);
-    else result = await scanOneOnline(item, pageNo, prevContext);
+    else result = await scanOneOnline(item, pageNo, prevContext, force);
     item.status = 'done';
     item.result = result;
     saveLocalProgress(pageNo);
@@ -1035,17 +1042,46 @@ async function runOnePage(id) {
   }
 }
 
+/* ---- 强制重扫：已录入页发现漏词时，用原页码重新识别并覆盖本页 ----
+ * 不改页码（避免数据错页），后端 force=1 会先清空该页旧词条再重新入库。
+ */
+async function forceRescan(id) {
+  const item = batchQueue.find(x => x.id === id);
+  if (!item || item.running) return;
+  if (!(item.pageNo > 0)) { toast('该页还没有页码，无法重扫'); return; }
+  item.error = null;
+  try {
+    setProgress(true, 0, `强制重扫第 ${item.pageNo} 页（原页码覆盖）…`);
+    const prevCtx = await loadPageContext(item.pageNo - 1);
+    const result = await parseOnePage(item, item.pageNo, prevCtx, batchQueue.indexOf(item), true);
+    item.recorded = false;
+    await autoRepairNextPage(item, result);
+    setProgress(true, 100, `第 ${item.pageNo} 页重扫完成`);
+    toast(`第 ${item.pageNo} 页已重扫覆盖：识别 ${result.words_found || 0} 词${result.force_cleared ? `（清除旧词 ${result.force_cleared} 条）` : ''}`);
+  } catch (e) {
+    item.status = 'error';
+    item.error = e.message;
+    toast(`重扫失败：${e.message}`);
+  } finally {
+    item.running = false;
+    renderBatch();
+    await refreshWords();
+    setTimeout(() => setProgress(false), 1200);
+  }
+}
+
 /* ---- 在线：解析一页（图片与页码已在阶段①上传/识别，批次已落库）---- */
-async function scanOneOnline(item, pageNo, prevContext) {
+async function scanOneOnline(item, pageNo, prevContext, force = false) {
   if (!cfg.url || !cfg.key) throw new Error('请先在设置中配置 Supabase');
   if (!item.imageUrl) throw new Error('图片尚未上传，请先执行“识别每页页码”');
   // 一页 AI 解析约 40 秒，超时放宽到 150 秒；网络中断自动重试 1 次（入库幂等，重试安全）
+  // force=1 时后端会先清该页旧数据，因此网络重试也必须带 force，否则第二次重试会跳过清理
   const fn = await fetchWithRetry(`${cfg.url}/functions/v1/scan-page`, {
     method: 'POST',
     headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       imageUrl: item.imageUrl, bookId: cfg.book, pageNo,
-      batchId: item.batchId, prevContext,
+      batchId: item.batchId, prevContext, force,
     }),
   }, { timeout: 150000, retries: 1, label: `第 ${pageNo} 页扫描` });
   const text = await fn.text();
