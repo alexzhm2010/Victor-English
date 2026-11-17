@@ -17,6 +17,11 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.4.0', date: '2026-11-17', items: [
+    '恢复「高考链接」蓝底框解析：作为标签框归入对应词条的 notes，不再整块跳过（ache/achievement 等可见）',
+    '标签框展示改为通用：辨/注/同/反/句型/高考链接/常用词块等全部显示，新增标签无需改代码',
+    '扫描列表每行新增入库回执：「新识别/已存在，本页XX个单词，已入库」，便于与书本比照',
+  ]},
   { v: '2.3.0', date: '2026-11-17', items: [
     'UI 全面重设计：引用玻璃渐变淡蓝主题，令牌化配色与阴影',
     '桌面端新增左侧导航栏与多列词卡布局，手机端保留底部导航',
@@ -302,6 +307,8 @@ async function fetchLastMaxPage(force = false) {
 /* ---------------- 已录入页码查询（用于「前期已录入」标注与跳过） ---------------- */
 // 以词表 vw_words 的 page_no 为准：该页存在词条即视为「前期已录入」
 let _recordedCache = { key: null, set: null };
+let _pageCountCache = new Map();   // page_no -> 该页词条数（供扫描行「本页XX个单词」回执用）
+function getPageWordCount(pageNo) { return _pageCountCache.get(pageNo) || 0; }
 async function fetchRecordedPages(force = false) {
   const cacheKey = `${cfg.url}|${cfg.book}|${cfg.demo}`;
   if (!force && _recordedCache.key === cacheKey && _recordedCache.set) return _recordedCache.set;
@@ -309,6 +316,8 @@ async function fetchRecordedPages(force = false) {
     let stored = [];
     try { stored = JSON.parse(localStorage.getItem(LS.demo) || '[]'); } catch (e) {}
     const set = new Set(stored.map(w => w.page_no).filter(n => n > 0));
+    _pageCountCache = new Map();
+    stored.forEach(w => { if (w.page_no > 0) _pageCountCache.set(w.page_no, (_pageCountCache.get(w.page_no) || 0) + 1); });
     _recordedCache = { key: cacheKey, set };
     return set;
   }
@@ -325,6 +334,8 @@ async function fetchRecordedPages(force = false) {
     if (r.ok) {
       const rows = await r.json();
       const set = new Set(rows.map(x => x.page_no).filter(n => n > 0));
+      _pageCountCache = new Map();
+      rows.forEach(x => { if (x.page_no > 0) _pageCountCache.set(x.page_no, (_pageCountCache.get(x.page_no) || 0) + 1); });
       _recordedCache = { key: cacheKey, set };
       return set;
     }
@@ -638,6 +649,8 @@ function renderBatch() {
   };
   list.innerHTML = batchQueue.map((it, i) => {
     const running = !!it.running;
+    // 扫描回执：每页一行明确写「新识别/已存在，本页XX个单词，已入库」，方便与书本比照
+    const pageWordCount = it.pageNo > 0 ? getPageWordCount(it.pageNo) : 0;
     // 前期已录入优先显示，不再走普通解析状态（带自定义 note 的完成项除外，用 note 说明）
     const hasNote = it.status === 'done' && it.result && it.result.note;
     const isRecorded = it.recorded && it.pageNo > 0 && it.status !== 'error' && !hasNote;
@@ -646,7 +659,7 @@ function renderBatch() {
     if (hasNote) {
       extra = `<div class="boundary-note recorded">✅ ${esc(it.result.note)}</div>`;
     } else if (isRecorded) {
-      extra = `<div class="boundary-note recorded">📖 第 ${it.pageNo} 页已在词库中，本次自动跳过。若漏录了单词，点右侧「重扫」会用原页码重新识别并覆盖本页。</div>`;
+      extra = `<div class="boundary-note recorded">◷ 已存在，本页 ${pageWordCount} 个单词，已入库（第 ${it.pageNo} 页本次跳过；漏词可点右侧「重扫」覆盖）</div>`;
     } else if (it.status === 'detected' && it.pageNo > 0) {
       extra = `<div class="boundary-note">📖 从图片识别到第 ${it.pageNo} 页，可点左侧页码校正</div>`;
     }
@@ -654,7 +667,8 @@ function renderBatch() {
       extra += `<div class="boundary-note partial">${esc(it.error)}</div>`;
     }
     if (it.status === 'done' && it.result && !hasNote) {
-      extra = `<div class="batch-status">识别 ${it.result.words_found || 0} 词 / ${it.result.examples_found || 0} 例句${it.result.merged_examples ? ` · 合并 ${it.result.merged_examples} 条` : ''}</div>`;
+      const doneCount = it.result.words_found != null ? it.result.words_found : pageWordCount;
+      extra = `<div class="boundary-note done">✅ 新识别，本页 ${doneCount} 个单词，已入库${it.result.examples_found ? `（含 ${it.result.examples_found} 例句）` : ''}</div>`;
       if (it.result.resumed_words) {
         extra += `<div class="boundary-note">🔗 补全上一页半截词 ${it.result.resumed_words} 个</div>`;
       }
@@ -1426,9 +1440,9 @@ function wordCardHtml(w, i) {
   // 派生词来源
   const derivedTag = w.derived_from
     ? `<span class="tag tag-derived" title="派生自 ${esc(w.derived_from)}">派生自 ${esc(w.derived_from)}</span>` : '';
-  // 蓝底标签框（辨/注/同/句型）
+  // 蓝底标签框（辨/注/同/反/句型/高考链接/常用词块等）：直接显示原始类型，新增标签无需改代码
   const notesHtml = (w.notes || []).map(n => {
-    const t = ['辨','注','同','句型'].includes(n.note_type) ? n.note_type : '注';
+    const t = (n.note_type && String(n.note_type).trim()) || '注';
     const title = n.title ? `<div class="note-title">${esc(n.title)}</div>` : '';
     const content = (n.content || '').split(/\n+/).filter(Boolean)
       .map(line => `<div class="note-line">${esc(line).replace(/^•\s*/, '• ')}</div>`).join('');
