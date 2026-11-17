@@ -1,0 +1,7 @@
+project_id = "gjtjivmxxelnousbqmok"
+
+[functions.scan-page]
+verify_jwt = false
+
+[functions.detect-page]
+verify_jwt = false
