@@ -10,13 +10,30 @@ const LS = {
   cfg:      'vocab_cfg',
   demo:     'vocab_demo_words',
   progress: 'vocab_scan_progress',   // { [book]: maxPageNo } 扫描进度记忆
+  sync:     'vocab_sync',            // 当前同步码 { code, note, isSuper }
 };
+
+/* ---------------- 同步码状态 ---------------- */
+const SUPER_CODE = '663798';         // 内置超级码
+let sync = loadSync();               // { code, note, isSuper } | null
+function loadSync() {
+  try { const s = JSON.parse(localStorage.getItem(LS.sync) || 'null'); return s && s.code ? s : null; }
+  catch (e) { return null; }
+}
+function saveSync(s) { localStorage.setItem(LS.sync, JSON.stringify(s)); }
+function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper)); }
 
 /* ============================================================
  * 版本与更新日志（集中维护：每次改完功能，只需在这里加一条）
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.9.0', date: '2026-11-17', items: [
+    '新增同步码：输入同步码进入，每人学习进度（已会/不会/进度）按码隔离保存，互不干扰',
+    '超级码 663798 可进入扫描页与设置页；普通同步码只能浏览词库与记录进度',
+    '设置页新增同步码管理（仅超级码）：增删同步码、编辑备注、指定超级码',
+    '修复多词性义项乱序：按词性归组、组内按序号排列，贴合原书版式（如 across 的 prep/adv）',
+  ]},
   { v: '2.8.0', date: '2026-11-17', items: [
     '长按/右键单词改为行左滑：空出半行露出「已会 / 不会 / 进度」快捷按钮，移除意义不大的编辑框',
     '已会与不会互斥，点选即存云端；再点一次取消',
@@ -245,14 +262,228 @@ async function testConnection() {
   } catch (e) { setStatus('网络错误：' + e.message, 'err'); }
 }
 
-/* ---------------- 导航 ---------------- */
+/* ---------------- 导航（同步码门禁） ---------------- */
 function switchPage(name) {
+  // 普通同步码只能进词库页；扫描/设置页对普通码隐藏
+  if (!isSuper() && (name === 'scan' || name === 'settings')) {
+    toast('当前同步码无权访问该页面');
+    name = 'words';
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.querySelectorAll('nav button').forEach(b =>
     b.classList.toggle('active', b.dataset.page === name));
   updateAzVisibility();
   if (name === 'words') resetWordList();
+}
+
+/* ============================================================
+ * 同步码门禁 + 管理
+ *  - 普通码：仅词库页；超级码：全部页面 + 同步码管理
+ *  - 演示模式跳过云端校验，本地用内置码
+ * ============================================================ */
+const SYNC_HEADERS = () => ({ apikey: cfg.key, Authorization: `Bearer ${cfg.key}` });
+
+// 应用门禁：隐藏/显示扫描、设置导航；刷新页眉徽标
+function applyGating() {
+  const sup = isSuper();
+  // 导航按钮（底栏 + 侧栏）—— 用 data-page 精确匹配，不误伤其它按钮
+  document.querySelectorAll('.bottom-nav button[data-page], .side-nav button[data-page]').forEach(b => {
+    const restricted = (b.dataset.page === 'scan' || b.dataset.page === 'settings');
+    b.classList.toggle('hidden-soft', restricted && !sup);
+  });
+  // 页眉/侧栏同步码徽标
+  const code = sync ? sync.code : '未设置';
+  const set = (id, txt, superCls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    if (superCls !== undefined) el.classList.toggle('super', superCls);
+  };
+  set('syncChip', (sup ? '★' : '') + code, sup);
+  set('sideSyncCode', code);
+  // 设置页同步码管理区仅超级码可见
+  const cm = document.getElementById('codeManage');
+  if (cm) cm.classList.toggle('hidden-soft', !sup);
+  // 若当前停在受限页，退回词库
+  const active = document.querySelector('.page.active');
+  if (!sup && active && (active.id === 'page-scan' || active.id === 'page-settings')) switchPage('words');
+}
+
+// 打开门禁弹框（switching=true 表示切换码，允许取消）
+let _syncSwitching = false;
+function openSyncGate(switching) {
+  _syncSwitching = !!switching;
+  const gate = document.getElementById('syncGate');
+  const cancel = document.getElementById('syncGateCancel');
+  const hint = document.getElementById('syncGateHint');
+  document.getElementById('syncErr').textContent = '';
+  document.getElementById('syncInput').value = '';
+  document.getElementById('syncGateTitle').textContent = switching ? '切换同步码' : '输入同步码';
+  document.getElementById('syncGateDesc').textContent = switching
+    ? '输入新的同步码，切换到对应词库与学习进度。'
+    : '输入你的同步码，进入属于你的词库与学习进度。';
+  if (cancel) cancel.classList.toggle('hidden-soft', !switching);
+  if (hint) hint.classList.toggle('hidden-soft', !!switching);
+  gate.classList.add('show');
+  setTimeout(() => { try { document.getElementById('syncInput').focus(); } catch (e) {} }, 50);
+}
+function closeSyncGate() {
+  // 首次进入未设置同步码时不允许关闭
+  if (!sync && !_syncSwitching) return;
+  document.getElementById('syncGate').classList.remove('show');
+}
+
+// 提交同步码：校验存在 → 记住 → 应用门禁 → 重新加载该码的学习状态
+async function submitSyncCode() {
+  const inp = document.getElementById('syncInput');
+  const code = (inp.value || '').trim();
+  const errEl = document.getElementById('syncErr');
+  const btn = document.getElementById('syncGateBtn');
+  if (!code) { errEl.textContent = '请输入同步码'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = '校验中…'; }
+  try {
+    let rec = null;
+    if (cfg.demo) {
+      // 演示模式：任意码可用，663798 为超级码
+      rec = { code, note: '演示', is_super: code === SUPER_CODE };
+    } else {
+      if (!cfg.url || !cfg.key) throw new Error('未配置 Supabase');
+      const r = await fetchWithRetry(
+        `${cfg.url}/rest/v1/vw_sync_codes?select=code,note,is_super&code=eq.${encodeURIComponent(code)}`,
+        { headers: SYNC_HEADERS() }, { timeout: 12000, retries: 1, label: '校验同步码' });
+      if (!r.ok) throw new Error('校验失败 ' + r.status);
+      const rows = await r.json();
+      rec = rows[0] || null;
+    }
+    if (!rec) { errEl.textContent = '同步码不存在，请检查后重试'; return; }
+    sync = { code: rec.code, note: rec.note || '', isSuper: !!(rec.is_super || rec.code === SUPER_CODE) };
+    saveSync(sync);
+    document.getElementById('syncGate').classList.remove('show');
+    applyGating();
+    await refreshWords();          // 按新码加载学习状态
+    if (isSuper()) loadSyncCodeList();
+    toast(`已进入同步码 ${code}${sync.isSuper ? '（超级码）' : ''}`);
+  } catch (e) {
+    errEl.textContent = '校验出错：' + e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '进入'; }
+  }
+}
+
+// 读取当前码的学习状态：vw_user_states -> 写入各 word.tags
+async function loadUserStates() {
+  if (!sync) { allWords.forEach(w => w.tags = []); return; }
+  if (cfg.demo) {
+    // 演示模式：学习状态存本地 LS，按码隔离
+    let map = {};
+    try { map = JSON.parse(localStorage.getItem('vocab_user_states_' + sync.code) || '{}'); } catch (e) {}
+    allWords.forEach(w => {
+      const key = w.id != null ? String(w.id) : w.headword;
+      w.tags = Array.isArray(map[key]) ? map[key] : [];
+    });
+    return;
+  }
+  if (!cfg.url || !cfg.key) { allWords.forEach(w => w.tags = []); return; }
+  const r = await fetchWithRetry(
+    `${cfg.url}/rest/v1/vw_user_states?select=word_id,tags&code=eq.${encodeURIComponent(sync.code)}`,
+    { headers: SYNC_HEADERS() }, { timeout: 15000, retries: 1, label: '加载学习状态' });
+  let map = {};
+  if (r.ok) {
+    (await r.json()).forEach(x => { map[x.word_id] = Array.isArray(x.tags) ? x.tags : []; });
+  }
+  allWords.forEach(w => { w.tags = map[w.id] || []; });
+}
+
+// 同步码管理列表（仅超级码）
+async function loadSyncCodeList() {
+  if (!isSuper()) return;
+  const host = document.getElementById('codeList');
+  if (!host) return;
+  let rows = [];
+  if (cfg.demo) {
+    rows = [{ code: SUPER_CODE, note: '超级码（演示）', is_super: true }];
+  } else {
+    const r = await fetchWithRetry(
+      `${cfg.url}/rest/v1/vw_sync_codes?select=code,note,is_super&order=is_super.desc,code`,
+      { headers: SYNC_HEADERS() }, { timeout: 12000, retries: 1, label: '加载同步码' });
+    if (r.ok) rows = await r.json();
+  }
+  host.innerHTML = rows.map(c => {
+    const me = sync && c.code === sync.code;
+    const badges = (c.is_super || c.code === SUPER_CODE ? '<span class="code-super">超级</span>' : '') +
+                   (me ? '<span class="code-me">当前</span>' : '');
+    const del = (c.code === SUPER_CODE)
+      ? '' : `<button class="code-del" title="删除" onclick="deleteSyncCode('${esc(c.code)}')">×</button>`;
+    return `<div class="code-row">
+      <span class="code-val">${esc(c.code)}</span>
+      <input class="code-note" value="${esc(c.note || '')}" placeholder="备注"
+        onchange="updateSyncNote('${esc(c.code)}',this.value)" style="border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12px;font-family:inherit;min-width:0">
+      ${badges}${del}</div>`;
+  }).join('') || '<div class="code-desc">暂无同步码</div>';
+}
+
+function setCodeStatus(msg, type) {
+  const el = document.getElementById('codeStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-line' + (type ? ' ' + type : '');
+}
+async function addSyncCode() {
+  const codeEl = document.getElementById('newCode');
+  const noteEl = document.getElementById('newCodeNote');
+  const superEl = document.getElementById('newCodeSuper');
+  const code = (codeEl.value || '').trim();
+  const note = (noteEl.value || '').trim();
+  const sup = !!superEl.checked;
+  if (!code) { setCodeStatus('请输入同步码', 'err'); return; }
+  if (code === SUPER_CODE) { setCodeStatus('该码为内置超级码，无需添加', 'err'); return; }
+  try {
+    if (cfg.demo) { setCodeStatus('演示模式下不保存同步码', 'ok'); }
+    else {
+      const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_sync_codes`,
+        { method: 'POST', headers: { ...SYNC_HEADERS(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ code, note, is_super: sup }) },
+        { timeout: 12000, retries: 1, label: '添加同步码' });
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(r.status === 409 ? '同步码已存在' : ('添加失败 ' + r.status + ' ' + t.slice(0, 60)));
+      }
+    }
+    codeEl.value = ''; noteEl.value = ''; superEl.checked = false;
+    setCodeStatus('已添加同步码 ' + code, 'ok');
+    loadSyncCodeList();
+  } catch (e) { setCodeStatus(e.message, 'err'); }
+}
+async function updateSyncNote(code, note) {
+  if (cfg.demo) return;
+  try {
+    const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_sync_codes?code=eq.${encodeURIComponent(code)}`,
+      { method: 'PATCH', headers: { ...SYNC_HEADERS(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ note: note || '' }) },
+      { timeout: 12000, retries: 1, label: '保存备注' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    setCodeStatus('备注已更新', 'ok');
+  } catch (e) { setCodeStatus('备注保存失败：' + e.message, 'err'); }
+}
+async function deleteSyncCode(code) {
+  if (code === SUPER_CODE) { setCodeStatus('超级码不可删除', 'err'); return; }
+  if (sync && sync.code === code) { setCodeStatus('不能删除当前正在使用的同步码', 'err'); return; }
+  if (!confirm('确定删除同步码 ' + code + ' 及其全部学习进度？此操作不可恢复。')) return;
+  try {
+    if (!cfg.demo) {
+      // 先删该码的学习状态（外键也有 cascade，这里显式删除更稳妥）
+      await fetchWithRetry(`${cfg.url}/rest/v1/vw_user_states?code=eq.${encodeURIComponent(code)}`,
+        { method: 'DELETE', headers: SYNC_HEADERS() },
+        { timeout: 12000, retries: 1, label: '删除学习状态' });
+      const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_sync_codes?code=eq.${encodeURIComponent(code)}`,
+        { method: 'DELETE', headers: SYNC_HEADERS() },
+        { timeout: 12000, retries: 1, label: '删除同步码' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    }
+    setCodeStatus('已删除同步码 ' + code, 'ok');
+    loadSyncCodeList();
+  } catch (e) { setCodeStatus('删除失败：' + e.message, 'err'); }
 }
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -1273,6 +1504,32 @@ function dedupeSenses(senses) {
   return out;
 }
 
+// 义项按词性归组、组内按义项号排序（贴合印刷版式）：
+// 同一单词不同词性各有多个义项时，书上先按词性分节、每节内按 ①②③ 顺序排列。
+// AI 输出/入库顺序可能交错（如 prep① prep③ adv② prep② adv①），
+// 这里按「词性首次出现的先后」归组，组内按 sense_no 升序，恢复书上顺序。
+function orderSenses(senses) {
+  if (!Array.isArray(senses) || senses.length < 2) return senses || [];
+  const groups = new Map();   // normPos -> { first, items }
+  const posOrder = [];
+  senses.forEach((s, i) => {
+    const p = normPosFront(s.pos) || '_';
+    if (!groups.has(p)) { groups.set(p, { first: i, items: [] }); posOrder.push(p); }
+    groups.get(p).items.push(s);
+  });
+  const out = [];
+  posOrder.forEach(p => {
+    const g = groups.get(p);
+    g.items.sort((a, b) => {
+      const na = Number(a.sense_no ?? a.no ?? 0) || 0;
+      const nb = Number(b.sense_no ?? b.no ?? 0) || 0;
+      return na - nb;
+    });
+    out.push(...g.items);
+  });
+  return out;
+}
+
 async function refreshWords() {
   if (cfg.demo) {
     try { allWords = JSON.parse(localStorage.getItem(LS.demo) || '[]'); }
@@ -1295,10 +1552,12 @@ async function refreshWords() {
       notes: w.vw_notes || []
     }));
   }
-  // 统一归一化：tags 收敛为新三态 + 义项去重（消除重复扫描产生的 adj/adj. 双份义项）
+  // 按当前同步码加载学习状态，覆盖词库全局 tags（进度/已会/不会按码隔离）
+  await loadUserStates();
+  // 统一归一化：tags 收敛为新三态 + 义项去重 + 按词性归组排序（贴合印刷版式）
   allWords.forEach(w => {
     w.tags = Array.isArray(w.tags) ? w.tags.filter(t => t === '已会' || t === '不会' || t === '进度') : [];
-    w.senses = dedupeSenses(w.senses);
+    w.senses = orderSenses(dedupeSenses(w.senses));
   });
   // 按 A–Z 排序（忽略大小写），供仿书本顺序滚动
   allWords.sort((a, b) => String(a.headword || '').toLowerCase().localeCompare(String(b.headword || '').toLowerCase()));
@@ -1725,26 +1984,32 @@ function findWordByKey(key) {
  * ============================================================ */
 const STUDY_TAGS = ['已会', '不会', '进度'];
 
-// 写入单个词的 tags 到云端（或演示模式本地），返回是否成功
+// 写入单个词的学习状态到「当前同步码」名下（vw_user_states），返回是否成功
 async function persistStudyTags(w) {
   const newTags = Array.isArray(w.tags) ? w.tags.filter(t => STUDY_TAGS.includes(t)) : [];
   w.tags = newTags;
+  if (!sync) return false;
   if (cfg.demo || w.id == null) {
     if (cfg.demo) {
-      let stored = [];
-      try { stored = JSON.parse(localStorage.getItem(LS.demo) || '[]'); } catch (e) {}
-      const idx = stored.findIndex(x => x.headword === w.headword);
-      if (idx >= 0) stored[idx] = w; else stored.push(w);
-      localStorage.setItem(LS.demo, JSON.stringify(stored));
+      // 演示模式：按同步码存本地 LS
+      const key = 'vocab_user_states_' + sync.code;
+      let map = {};
+      try { map = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
+      const wk = w.id != null ? String(w.id) : w.headword;
+      map[wk] = newTags;
+      localStorage.setItem(key, JSON.stringify(map));
     }
     return true;
   }
-  const headers = { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' };
+  const headers = { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, 'Content-Type': 'application/json',
+    Prefer: 'resolution=merge-duplicates,return=minimal' };
   try {
-    const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_words?id=eq.${w.id}`, {
-      method: 'PATCH', headers, body: JSON.stringify({ tags: newTags }),
+    // upsert：主键 (code, word_id)，有则更新无则插入
+    const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_user_states`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ code: sync.code, word_id: w.id, tags: newTags, updated_at: new Date().toISOString() }),
     }, { timeout: 15000, retries: 1, label: '保存学习状态' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 80));
     return true;
   } catch (e) { console.warn('保存学习状态失败', e); return false; }
 }
@@ -1829,7 +2094,7 @@ function esc(s) {
 }
 
 /* ---------------- 初始化 ---------------- */
-(function init() {
+(async function init() {
   // 回填设置表单
   document.getElementById('cfgUrl').value  = cfg.url;
   document.getElementById('cfgKey').value  = cfg.key;
@@ -1838,7 +2103,17 @@ function esc(s) {
   applyMode();
   renderVersion();
   initAzIndex();
-  refreshWords();
+
+  if (sync) {
+    // 已有同步码：应用门禁并直接加载
+    applyGating();
+    await refreshWords();
+    if (isSuper()) loadSyncCodeList();
+  } else {
+    // 无同步码：弹门禁框（首次进入），词库先留空
+    applyGating();
+    openSyncGate(false);
+  }
   // 预取扫描进度（弹框弹出时可直接用），失败不影响
   updateProgressDisplay();
 })();
