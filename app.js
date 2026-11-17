@@ -17,6 +17,10 @@ const LS = {
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.1.7', date: '2026-11-17', items: [
+    '版本卡片只显示当前版本，移除历史版本列表',
+    '精简各页辅助说明文字，界面更清爽',
+  ]},
   { v: '2.1.6', date: '2026-11-17', items: [
     '扫描页版本信息卡片移到页面最底部，顶部直接是拍摄/选图框',
   ]},
@@ -93,11 +97,6 @@ function renderVersion() {
   set('versionDate', latest.date + ' 更新');
   const latestBox = document.getElementById('versionLatest');
   if (latestBox) latestBox.innerHTML = latest.items.map(x => '<div class="vitem">• ' + esc(x) + '</div>').join('');
-  const hist = document.getElementById('versionHistory');
-  if (hist) hist.innerHTML = CHANGELOG.slice(1).map(r =>
-    '<div class="vrel"><span class="vrel-v">v' + r.v + '</span><span class="vrel-date">' + r.date + '</span>'
-    + '<div class="vrel-items">' + r.items.map(x => '• ' + esc(x)).join('<br>') + '</div></div>'
-  ).join('');
 }
 function toggleChangelog() {
   const h = document.getElementById('versionHistory');
