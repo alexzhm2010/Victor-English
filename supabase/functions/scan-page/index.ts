@@ -93,12 +93,14 @@ content 保留框内文字与项目符号。不要把这些框里的句子塞进
 - 关键：高考链接框出现在哪个词条正下方，就归到哪个词条的 notes（例：ache 框归 ache，achievement 框归 achievement）。
 - 注意区分：词条普通例句句末的出处（人教③-5、2013全国、译林新选必①-2）仍照常存入 example.source，那是普通例句，不是高考链接框。
 
-【跨页 · partial（关键：页首页尾残段都不能丢）】
-- 页尾词被截断、将在下页继续 → 该词 partial=true，boundary.tail 填该词头。
-- 页首无完整词头行、直接出现义项/词性/例句（说明是延续上一页某词的残段）：
+【跨页 · partial（关键：页首页尾残段都不能丢，优先级高于"看起来完整"）】
+本词典的词条经常跨页：一个词在本页页尾开始（音标+前几个义项）、下一页页首继续（剩余义项/例句）。判断依据是【版式位置】而不是"这个词看起来全不全"——出现在页面最底部的词，即使音标释义齐全，也极可能是跨页词的前半段。
+- 页尾词（出现在页面最底部一行、下方紧接页码或空白）：即使内容齐全，只要它是本页最后一个词，就一律标 partial=true，并在 boundary.tail 填该词头。这样下一页的同词残段会自动并回来，不会拆成两个独立词。这是防止"access 在 P4/P5 各存一条"这类错误的关键。
+- 页首残段：页面最顶部若直接出现义项/词性/例句、没有完整词头行（说明延续上一页某词）：
   · 若用户消息含 PREV_PAGE_TAIL 且能对应其词头 → 用该词头作 headword，把延续内容作为该词的 sense 放进 words，正常合并。
   · 否则（没有 PREV_PAGE_TAIL，或词头对不上）→ 必须把这段页首残段单独输出为一个 word 对象，并额外带三个字段：fragment_side:"head"、partial:true、headword 填你能从例句/释义推断的词头（实在推不出填 "?"），senses 正常填这段残段的义项与例句。系统会把这段残段存入"握手池"，等上一页录入后自动合并——绝不要丢弃，也不要当成完整独立词条。
 - 一页最多只有一个页首残段（页面最顶部那一小段），不要在多处乱标 fragment_side。
+- 注意：页首延续词（fragment_side=head）和页尾半截词（partial=true）仍要计入 checkList（它们是图上真实存在的词头），但在 words 里必须带上述残段标记，不能当成普通完整词。
 
 【输出精简】字段无值直接省略该键，不要输出空串/空数组/false 占位。无法辨认的字符不要编造，保留原文或留空，务必保留音标与中文。fragment_side 只用于页首残段，普通词条不要输出。只输出严格 JSON。
 
@@ -106,6 +108,7 @@ content 保留框内文字与项目符号。不要把这些框里的句子塞进
 本页识别时，先在顶层输出 checkList：把你在图上看到的【每一个独立词头】按版式顺序各列出一次（纯字符串，含普通词、*星号词、⊕/⊖、▶▼派生词、页尾半截词、共用释义区的多词头如 a 和 an 都要各算一个）。
 然后 words 里必须为 checkList 的每个词头建立一个平级 word 对象；每个 word 的 headword 必须且只能对应 checkList 里的一条。
 铁律：checkList 的数量 == words 的数量，一个都不能少、不能多。凡是图上出现的词头，必须先进入 checkList，再落到 words——不允许"看了没列、列了没落"。
+但【残段例外】：跨页的页尾词和页首延续词也要计入 checkList，只是它们在 words 里必须按上面的【跨页 · partial】规则带 partial=true / fragment_side=head 标记，绝不能因为要"凑数量"就当成普通完整词——否则同一个词会在相邻页各存一条。数量相等与残段标记必须同时满足。
 后端会逐条对账：checkList 里有、words 里没有的，视为孤儿词单独召回补建。所以 checkList 务必穷尽本页词头，不漏列。
 但【严禁按字母顺序脑补】：checkList 里每一个词头都必须是本页图片上真实印刷出来、你能用手指到的；绝不能因为字母顺序（如上一页是 abuse、本页从 academic 开始）就把相邻页的词也列进来。多列一个图上没有的词 = 错误，和漏列一样严重。
 
@@ -645,6 +648,36 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
         }
       }
 
+      // 【确定性兜底：跨页同词头自动合并，不依赖 AI 是否标 partial】
+      // 词典按字母连续编排，相邻页出现同词头必是同一词条被页边界切开。
+      // 强信号：延续的半截词通常没有音标（音标在词条起始页）。命中则并入相邻页词条，本页不另建。
+      // 这防止"access 在 P4/P5、accompany 在 P5/P6 各存一条"这类拆词（AI 逐页看时容易漏标 partial）。
+      let crossMerged = false;
+      if (!w.fragment_side) {   // 页首残段走下面的握手池 head 流程，这里只处理"看起来完整"的延续词
+        const hasPhonetic = !!(w.phonetic && String(w.phonetic).trim());
+        for (const neighbor of [thisPage - 1, thisPage + 1]) {
+          if (!(neighbor > 0) || crossMerged) continue;
+          const { data: nbRows } = await supabase.from("vw_words")
+            .select("id,phonetic,page_no").eq("book_id", bookId)
+            .eq("headword", hw).eq("page_no", neighbor);
+          if (!nbRows || !nbRows.length) continue;
+          // 相邻页那条是"起始页"(有音标) 且 本页这条无音标 → 判定为延续
+          const nbHasPh = nbRows.some(r => r.phonetic && String(r.phonetic).trim());
+          if (!nbHasPh || hasPhonetic) continue;  // 只有本页无音标、邻页有音标时才合并
+          const targetId = nbRows.find(r => r.phonetic && String(r.phonetic).trim())?.id || nbRows[0].id;
+          await mergeIntoSenses(targetId, w.senses || []);
+          await writeNotes(targetId, w.notes || []);
+          await supabase.from("vw_words").update({ partial: false }).eq("id", targetId);
+          resumedWords++;
+          headwordToId.set(hw, targetId);
+          await supabase.from("vw_page_handshakes").update({ status: "matched", updated_at: new Date().toISOString() })
+            .eq("book_id", bookId).eq("side", "tail").eq("page_no", neighbor).eq("headword", hw);
+          crossMerged = true;
+          break;
+        }
+        if (crossMerged) continue;   // 已并入相邻页，本页不建重复词条
+      }
+
       const wordId = await upsertWord(w, hw, isPartial, null);
       headwordToId.set(hw, wordId);
       await mergeIntoSenses(wordId, w.senses || []);
@@ -739,7 +772,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.12.0",
+      engine_version: "v2.15.0",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,
