@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.19.0', date: '2026-11-18', items: [
+    '修复词库只显示1000词：Supabase 单次查询硬上限1000条，现改为分页拉全，1193个词全部显示，P87~P100 不再缺失',
+    '修复记录页「累计词条」虚高：不再累加各批次词数（重扫会重复计入），改为按词库真实词条数统计，现与词库页数字一致',
+  ]},
   { v: '2.18.4', date: '2026-11-18', items: [
     '移除任务清单上方两个状态按钮（进行中/待验收、已验收归档），展示形式不变：仅显示未验收任务，已验收的归档后不再显示',
     '保留验收后刷新：点「确认验收」后下方页码清单立即更新，新页马上可见',
@@ -1806,11 +1810,20 @@ async function refreshWords() {
     if (!cfg.url || !cfg.key) { allWords = []; return; }
     // 嵌套查询：vw_words 带出 vw_senses(再带 vw_examples) 与 vw_notes
     const select = 'id,headword,phonetic,level_tag,page_no,partial,inline_def,identity_tag,derived_from,parent_word_id,tags,vw_senses(id,pos,sense_no,sense_freq,countability,usage_label,chinese_def,english_def,antonym,vw_examples(id,kind,parent_phrase,usage_label,en,zh,gloss,source)),vw_notes(id,note_type,title,content)';
-    const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_words?book_id=eq.${encodeURIComponent(cfg.book)}&select=${encodeURIComponent(select)}&order=id`, {
-      headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` }
-    }, { timeout: 20000, retries: 1, label: '加载词库' });
-    if (!r.ok) { console.warn('查询词库失败', await r.text()); allWords = []; return; }
-    const rows = await r.json();
+    // 关键：Supabase REST 服务端硬上限每次最多返回 1000 条（content-range 0-999/*），
+    // 即使写 limit=100000 也只给 1000。词库超过 1000 词时必须用 offset 分页拉全，
+    // 否则词库页永远只显示前 1000 个词，后面的页（P87~P100）全部缺失。
+    const PAGE = 1000;
+    const rows = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const r = await fetchWithRetry(`${cfg.url}/rest/v1/vw_words?book_id=eq.${encodeURIComponent(cfg.book)}&select=${encodeURIComponent(select)}&order=id&offset=${offset}&limit=${PAGE}`, {
+        headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` }
+      }, { timeout: 20000, retries: 1, label: '加载词库' + (offset ? `(${offset / PAGE + 1})` : '') });
+      if (!r.ok) { console.warn('查询词库失败', await r.text()); allWords = []; return; }
+      const part = await r.json();
+      rows.push(...part);
+      if (part.length < PAGE) break;   // 不足一页 = 已拉完
+    }
     // Supabase 嵌套返回键为 vw_senses / vw_examples，归一化为前端统一结构
     allWords = rows.map(w => Object.assign({}, w, {
       tags: Array.isArray(w.tags) ? w.tags : [],
@@ -2587,7 +2600,26 @@ let recordRows = [];            // 全部记录（按页码降序、同页按时
 let recordPage = 1;             // 当前分页
 let recordFilterPage = null;    // 页码过滤（null=全部）
 let recordRawCache = {};        // batch id -> words[]
+let vocabTotal = 0;             // 词库真实词条总数，用于记录页统计，与词库页一致
 const expandedRecords = new Set();
+
+// 轻量查词库真实总数：只取 content-range，不拉词条数据体。
+// 与词库页（分页拉全 allWords）指向同一真实数字，保证两处显示一致。
+async function loadVocabCount() {
+  if (cfg.demo) { vocabTotal = allWords.length; return; }
+  if (!cfg.url || !cfg.key) { vocabTotal = 0; return; }
+  try {
+    const r = await fetchWithRetry(
+      `${cfg.url}/rest/v1/vw_words?book_id=eq.${encodeURIComponent(cfg.book)}&select=id&limit=0`,
+      { headers: { ...SYNC_HEADERS(), Prefer: 'count=exact' } },
+      { timeout: 20000, retries: 1, label: '词库总数' });
+    if (r.ok) {
+      const m = /\/(\d+)\s*$/.exec(r.headers.get('content-range') || '');
+      if (m) { vocabTotal = parseInt(m[1], 10); return; }
+    }
+  } catch (_) { /* 查询失败走兜底 */ }
+  vocabTotal = allWords.length || vocabTotal;
+}
 
 /* ---- 云端任务执行清单（v2.16）---- */
 let jobRows = [];               // 任务单列表（仅未验收：排队/执行中/待验收；已验收不展示）
@@ -2810,11 +2842,14 @@ async function loadRecords() {
   if (!listEl) return;
   if (cfg.demo) {
     recordRows = [];
+    vocabTotal = allWords.length;
     renderRecords();
     return;
   }
   listEl.innerHTML = '<div class="rec-loading"><span class="mini-spinner"></span> 加载导入记录…</div>';
   try {
+    // 词库真实总数（分页拉全口径），供下方"累计词条"显示，与词库页一致
+    await loadVocabCount();
     // 验收门禁（v2.16.3）：未验收云端任务关联的批次不进入记录列表与统计。
     // 词已边跑边入库（沿用既定方案），但记录视为"待你核对"，验收后才正式计入。
     let pendingBatchIds = new Set();
@@ -2868,9 +2903,10 @@ function renderRecords() {
   const hintEl = document.getElementById('recFilterHint');
   if (!listEl) return;
 
-  // 统计：批次数 / 涉及页数 / 累计词数
+  // 统计：批次数 / 涉及页数 / 累计词条（取词库真实总数，与词库页一致）
+  // 注意：不能用批次 words_found 累加——重扫/重复导入会让同一词被多次计入，导致虚高。
   const pages = new Set(recordRows.map(r => r.page_no).filter(p => p != null));
-  const totalWords = recordRows.reduce((s, r) => s + (Number(r.words_found) || 0), 0);
+  const totalWords = vocabTotal || allWords.length;
   if (statEl) statEl.innerHTML =
     `<div class="rec-stat"><b>${recordRows.length}</b><span>导入批次</span></div>` +
     `<div class="rec-stat"><b>${pages.size}</b><span>涉及页码</span></div>` +
