@@ -59,7 +59,8 @@ const SYSTEM_PROMPT = `你是英语词典单页结构化解析引擎。识别图
   两者复用同一套 senses/items（各复制一份完整义项/例句）。绝不能只输出第一个词头或把两个词头合并成一个字符串。
 - 【词频标记一律忽略】音标后即使印有"柱状图 + R上标数字"，也【绝不输出 freq_level 字段】——该功能已取消，无需识别。忽略即可，不要脑补任何数字。
 - 词条行紧跟的中文核心释义（词头行末尾、义项之前的短释义）存入 level_tag。
-- 词头行里方括号【用法说明】（如「[a一般用于辅音音素开始的词前，an一般用于元音音素开始的词前]」）存入 inline_def，原样保留文字。这不是义项、不是例句，不要丢弃也不要塞进 senses。
+  【短词条硬要求】即使某词只有词头行、没有编号义项（如 best-seller 单行短词），也必须把该行的中文核心释义写进 level_tag，并至少给出一个 sense（pos + chinese_def），绝不允许只输出词头+音标而释义全空的核心释义放错位置：核心释义只能进 level_tag，不要写成 word.chinese_def（不存在该字段），也不要塞进 sense.usage_label。
+- 词头行里方括号【用法说明】（如「[a一般用于辅音音素开始的词前，an一般用于元音音素开始的词前]」）存入 inline_def，原样保留文字。这不是义项、不是例句，不要丢弃也不要塞进 senses。usage_label 只放【】/[ ]用法标签，绝不放中文释义。
 
 【▶/▼ 派生词 → 独立 word】
 - 词头行以 ▶ 或 ▼（实心三角）开头的词，如「▶ assuming (that) conj」「▶ attached adj」，是主词的直接派生词：输出为独立 word 对象，derived_from=它所属主词的词头（assuming→assume, attached→attach）。它有自己完整的音标/词性/义项/例句，照常解析，不要并进主词、也不要当例句丢弃。
@@ -259,10 +260,12 @@ function dedupeWords(words: any[]): any[] {
 function normEn(s: string): string {
   return (s || "").toLowerCase().replace(/[\s\p{P}]/gu, "");
 }
-// 词性归一化：去掉末尾句点（adj./adj. → adj；adv. → adv），
-// 避免同一次重扫因带点/不带点写出两条重复义项
+// 词性归一化：去掉【所有】句点并压缩空格（与前端 normPosFront 对齐）。
+// 旧版只去末尾句点，"vt. & vi."→"vt. & vi" 与 "vt & vi" 不相等，
+// 导致同词重扫时两套义项在写库层无法归组、各写一条（accelerate/accept 重复的根因）。
+// 现在复合词性 "vt. & vi." / "vt & vi" / "vt.&vi." 统一归一到 "vt & vi"。
 function normPos(p: string | undefined): string {
-  return String(p || "").trim().replace(/\.+$/, "").toLowerCase();
+  return String(p || "").trim().replace(/\./g, "").replace(/\s+/g, " ").toLowerCase();
 }
 
 Deno.serve(async (req) => {
@@ -820,6 +823,25 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
       processed.push({ w, hw, wordId, isResume: false });
     }
 
+    // ---- 阶段二补强：派生链二次回填（防止母词晚于子词写入时留空）----
+    // 派生词可多级嵌套（A→B→C），若原书词序把子词排在母词前（C 在 B 前），
+    // 主循环按词序写入时 C 的母词映射尚未建立，parent_word_id 会留空。
+    // 这里在全部词写入后、映射已完整时统一再补一次空值；只补空不覆盖，幂等。
+    let backfilledParents = 0;
+    for (const p of processed) {
+      const mother = String(p.w.derived_from || "").trim();
+      if (!mother) continue;
+      const { data: cur } = await supabase.from("vw_words")
+        .select("parent_word_id").eq("id", p.wordId).maybeSingle();
+      if (cur && cur.parent_word_id != null) continue;  // 已有有效值，不动
+      const parentId = await findParentId(mother);
+      if (parentId != null && parentId !== p.wordId) {
+        await supabase.from("vw_words").update({ parent_word_id: parentId }).eq("id", p.wordId);
+        backfilledParents++;
+      }
+    }
+    if (backfilledParents) console.log(`派生关系二次回填: ${backfilledParents} 处`);
+
     // 收集本页仍为半截的词（供下一页补全）——含派生词，并登记到握手池 tail 侧
     for (const p of processed) {
       if (p.isResume || !p.w.partial) continue;
@@ -882,7 +904,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.21.1",
+      engine_version: "v2.22.0",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,
