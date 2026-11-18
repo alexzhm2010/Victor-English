@@ -28,6 +28,12 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.17.0', date: '2026-11-18', items: [
+    '修复词头异常：剥离 * 星号到身份标签、栏目标签(辨/高考链接)归位到对应词、词性缩写(v.)义项并回主词',
+    '数据修正：13个*词、辨/高考链接/v 共18条异常词已归类，0孤儿数据',
+    '写库兜底+提示词强化：身份符号自动剥离，明确禁止把栏目标签/词性缩写当词头',
+    '排序兜底：非拉丁/带符号词头不再排到 a 前',
+  ]},
   { v: '2.16.3', date: '2026-11-18', items: [
     '修根因：云端任务不再产生"仅识别/0词"的僵尸批次，批次随入库同步更新为已入库并计入词数统计',
     '验收门禁：未验收任务产生的导入记录不再进入记录列表与统计，验收后才正式计入，避免错页数据污染',
@@ -1806,7 +1812,17 @@ async function refreshWords() {
     w.senses = orderSenses(dedupeSenses(w.senses));
   });
   // 按 A–Z 排序（忽略大小写），供仿书本顺序滚动
-  allWords.sort((a, b) => String(a.headword || '').toLowerCase().localeCompare(String(b.headword || '').toLowerCase()));
+  // v2.17 兜底：头部带符号(*/⊕/⊖)或非拉丁字符(中文等)的异常词头排到字母词之后，
+  // 绝不因 localeCompare 的码位规则抢到 a 前面。正常情况下写库已归类，这里是最后一道防线。
+  const _sortKey = w => String(w.headword || '').replace(/^[^a-zA-Z]+/, '').toLowerCase();
+  const _isLatin = w => /^[a-zA-Z]/.test(String(w.headword || '').replace(/^[^a-zA-Z]+/, ''));
+  allWords.sort((a, b) => {
+    const la = _isLatin(a), lb = _isLatin(b);
+    if (la !== lb) return la ? -1 : 1;          // 拉丁字母词在前，异常词在后
+    const ka = _sortKey(a), kb = _sortKey(b);
+    const c = ka.localeCompare(kb);
+    return c !== 0 ? c : String(a.headword || '').localeCompare(String(b.headword || ''));
+  });
   buildRelationGraph();   // 词间关系网（v2.13）
   rebuildTagFilter();
   resetWordList();

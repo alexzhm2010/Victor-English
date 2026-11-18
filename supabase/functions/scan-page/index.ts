@@ -26,6 +26,17 @@ const SYSTEM_PROMPT = `你是英语词典单页结构化解析引擎。识别图
   senses 元素里绝不能再出现 headword 字段。例：accomplish/according to/account/accountant/...
   必须各自是 words[0]/words[1]/words[2]/...，绝不是 words[1].senses[2]。嵌套会导致漏词。
 
+- 【硬规则：这些都不是词头，絶对不能建成独立 word】以下都是书上的"栏目/符号/词性分节"，
+  不是要背的单词，把它们当词头建独立词条 = 错误（会排到词库 a 前面、独立呈现）：
+  · 栏目标签"辨""高考链接①②③""同""反""派""⊕""⊖"等——它们是某个词条下的框/注，
+    必须并进【紧挨着它的那个主词】的 notes（辨→note_type="辨"，高考链接→note_type="高考链接"），绝不单独成词。
+    例："辨 broad, wide" 是 broad 的辨析注，归 broad.notes；"高考链接①…bad…" 归 bad.notes。
+  · 词性缩写分节标记"v.""vt.""vi.""n.""adj.""adv."等单独出现时，是上一个词的词性分节，
+    不是新词头——把它的义项/例句并入上面那个主词的 senses，不要新建 headword="v"/"vt" 的词。
+    例：brush 词条下 n. 刷子 / v. 刷、擦 / vi. 擦过，是同一个 brush 的三个词性，不是一个叫 "v" 的词。
+  · 身份符号 * ⊕ ⊖ 不是词头的一部分：headword 只写纯英文/中文词（如 animation，不是 *animation），
+    符号写进该词的 identity_tag 字段。
+
 【词头行 → word 字段】
 词头行可能以这些"身份符号"开头（务必辨认，圆内细节关键）：
 - 无任何符号 = 普通课标词 → 省略 identity_tag
@@ -421,6 +432,21 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
       }
     }
 
+    // ---- v2.17 词头归一化兜底：把身份符号从 headword 剥离到 identity_tag ----
+    // 提示词要求 * / ⊕ / ⊖ 记入 identity_tag，但豆包偶尔把它们留在 headword 里
+    // （如 "*animation"），导致排序时排到 a 前。这里在写库前统一纠正，无歧义。
+    const LEAD_MARKS: Record<string, string> = { "*": "*", "⊕": "⊕", "⊖": "⊖" };
+    for (const w of words) {
+      let hw = String(w.headword || "").trim();
+      while (hw.length) {
+        const m = LEAD_MARKS[hw.charAt(0)];
+        if (!m) break;
+        w.identity_tag = m;                 // 星号等身份符号归位到标签
+        hw = hw.slice(1).trim();
+      }
+      w.headword = hw;
+    }
+
     const boundary: Boundary = parsed.boundary || {};
     // 页码来源：detect 阶段已从图片识别并落库，scan 阶段沿用该页码，保证词表与页码表一致。
     // parsed.page_no 是本次 scan 的 AI 复核值，仅作兜底（detect 页码缺失时）。
@@ -772,7 +798,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.16.3",
+      engine_version: "v2.17.0",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,
