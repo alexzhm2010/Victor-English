@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.21.4', date: '2026-11-18', items: [
+    '修复重复义项显示：词性归一化只去末尾句点，导致 vt & vi 与 vt. & vi. 无法合并、同词出现两套相同释义和例句（如 accelerate/accept/about/above），现归一化去掉所有句点并压缩空格',
+    '同步清理数据库中 22 组重扫残留的重复义项（保留带常考标/中文译文的完整版），全库义项去重、无内容丢失',
+  ]},
   { v: '2.21.3', date: '2026-11-18', items: [
     '词库释义方案改进：核心释义与义项释义智能合并为一条，统一以右侧灰字展示，彻底去掉词头后的紫色核心释义标签',
     '合并规则：内容相同或互相包含取更完整者，两个不同义项则合并保留；展开词卡仍可看完整义项',
@@ -1644,8 +1648,9 @@ function showBatchResult(summary) {
 }
 
 /* ---------------- 词库查询 ---------------- */
-// 词性归一化：去掉末尾句点（adj./adj. → adj），与后端 normPos 保持一致
-function normPosFront(p) { return String(p || '').trim().replace(/\.+$/, '').toLowerCase(); }
+// 词性归一化：去掉所有句点并压缩空格（vt. & vi. / vt & vi → vt & vi；adj. → adj）
+// 复合词性的中间句点也必须去掉，否则 vt & vi 与 vt. & vi. 无法合并成同一组，导致重复义项显示
+function normPosFront(p) { return String(p || '').trim().replace(/\./g, '').replace(/\s+/g, ' ').toLowerCase(); }
 // 中文释义"纯度"评分：中文越多、英文越少越高，用于从重复义项里挑正确释义
 function hanScore(s) {
   const str = String(s || '');
