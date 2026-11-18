@@ -28,6 +28,9 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.18.1', date: '2026-11-18', items: [
+    '细节修正：跳过的页直接显示跳过原因，不再误显示"等待云端执行"',
+  ]},
   { v: '2.18.0', date: '2026-11-18', items: [
     '修复"两个同一页码"：连拍同一页时，若第一张云端解析中途被中断，页会永久卡在「解析中」；现已自动回收重扫（最多2次），多次失败转人工处理',
     '修根因：任务收尾前先检查是否仍有处理中的页，不再把卡住的任务提前标成完成',
@@ -2681,6 +2684,7 @@ function renderJobs() {
       let info = '';
       if (p.status === 'done') info = `${p.words_found || 0} 词 · ${p.senses_found || 0} 义项${p.api_calls ? ' · ' + p.api_calls + ' 次识别' : ''}`;
       else if (p.status === 'error') info = esc(String(p.error_msg || '识别失败').slice(0, 40));
+      else if (p.status === 'skipped') info = esc(String(p.error_msg || '该页已跳过').slice(0, 40));
       else if (p.status === 'running') info = '云端解析中…';
       else info = '等待云端执行';
       const retry = p.status === 'error'
