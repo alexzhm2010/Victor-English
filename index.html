@@ -518,10 +518,6 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 .job-section-hd .job-refresh{font-size:12px;color:var(--primary);background:none;border:none;cursor:pointer;padding:4px 8px}
 .job-live{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:600}
 .job-live i{width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;box-shadow:0 0 0 3px rgba(34,197,94,.18)}
-.job-tabs{display:flex;gap:6px;margin-bottom:10px}
-.job-tab{flex:1;text-align:center;font-size:12px;font-weight:700;padding:7px 4px;border-radius:9px;cursor:pointer;
-  border:1px solid var(--line);background:var(--card);color:var(--muted)}
-.job-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
 .job-card{background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
 .job-card-head{display:flex;align-items:center;gap:10px;padding:12px 13px;cursor:pointer;user-select:none;-webkit-user-select:none}
 .job-card-head:active{background:rgba(226,240,252,.5)}
@@ -840,10 +836,6 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
       <h3>任务执行清单</h3>
       <span class="job-live"><i></i>云端自动执行</span>
     </div>
-    <div class="job-tabs" id="jobTabs">
-      <div class="job-tab active" data-tab="active" onclick="switchJobTab('active')">进行中 / 待验收</div>
-      <div class="job-tab" data-tab="accepted" onclick="switchJobTab('accepted')">已验收归档</div>
-    </div>
     <div id="jobList"><div class="job-empty">加载任务清单…</div></div>
   </div>
   <div class="rec-stats" id="recStats"></div>
@@ -987,6 +979,6 @@ nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar-h);
 </div>
 
 <script src="demo-data.js"></script>
-<script src="app.js?v=2.18.1"></script>
+<script src="app.js?v=2.18.2"></script>
 </body>
 </html>
