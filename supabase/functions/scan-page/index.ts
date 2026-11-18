@@ -493,6 +493,32 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
     }
     if (rescuedHeads.length) console.log(`非法词头归位: ${rescuedHeads.join(", ")}`);
 
+    // ---- v2.21 释义字段归位兜底：短词条 AI 偶尔把核心释义放错字段，写库前统一纠正 ----
+    // 情况1：词头行核心释义被放进 word.chinese_def（类型外字段），而 level_tag 为空 → 兜底为 level_tag
+    // 情况2：义项中文释义为空，但被错塞进 usage_label（纯中文释义串，非【】/[ ]用法标签）→ 归位到 chinese_def
+    // 这样短词条至少保留核心释义，不再出现"只有词头音标、释义全空"的空壳词。
+    const USAGE_TAG = /^[【\[(（]|[】\])\]]$|通常不用于|常用于|用于|不用于|只用|与the连用|正式用语|非正式|句子副词|复数|单数|进行时|名词前|比较句型|定语|表语|口语|书面语/;
+    const isChineseDef = (s: string) => /[\u4e00-\u9fff]/.test(s) && !USAGE_TAG.test(s.trim());
+    let relocated = 0;
+    for (const w of words) {
+      const anyW = w as any;
+      // 情况1
+      if (!(w.level_tag || '').trim() && typeof anyW.chinese_def === 'string' && anyW.chinese_def.trim()) {
+        w.level_tag = anyW.chinese_def.trim();
+        relocated++;
+      }
+      // 情况2
+      for (const s of (w.senses || [])) {
+        if (!(s.chinese_def || '').trim() && isChineseDef(s.usage_label || '')) {
+          s.chinese_def = (s.usage_label || '').trim();
+          s.usage_label = '';
+          relocated++;
+        }
+      }
+      // 顶层 countability（短词条常见）也兜底进 level_tag 已经带 [C]/[U]，无需额外处理
+    }
+    if (relocated) console.log(`释义字段归位: ${relocated} 处`);
+
     const boundary: Boundary = parsed.boundary || {};
     // 页码来源：detect 阶段已从图片识别并落库，scan 阶段沿用该页码，保证词表与页码表一致。
     // parsed.page_no 是本次 scan 的 AI 复核值，仅作兜底（detect 页码缺失时）。
@@ -844,7 +870,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.20.0",
+      engine_version: "v2.21.0",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,
