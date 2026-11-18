@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.18.4', date: '2026-11-18', items: [
+    '移除任务清单上方两个状态按钮（进行中/待验收、已验收归档），展示形式不变：仅显示未验收任务，已验收的归档后不再显示',
+    '保留验收后刷新：点「确认验收」后下方页码清单立即更新，新页马上可见',
+  ]},
   { v: '2.18.3', date: '2026-11-18', items: [
     '修复验收后页码清单不刷新：点「确认验收」后，下方记录页立即重拉，新页（如 P85）马上出现在页码清单里',
     '任务清单展示保持原样（已验收仍归档、不干扰进行中任务）',
@@ -2586,9 +2590,8 @@ let recordRawCache = {};        // batch id -> words[]
 const expandedRecords = new Set();
 
 /* ---- 云端任务执行清单（v2.16）---- */
-let jobRows = [];               // 任务单列表
+let jobRows = [];               // 任务单列表（仅未验收：排队/执行中/待验收；已验收不展示）
 let jobPages = {};              // job_id -> 明细页数组
-let jobTab = 'active';          // active | accepted
 let jobPollTimer = null;        // 有进行中任务时的轮询定时器
 const expandedJobs = new Set();
 let _jobEditingPage = null;     // 正在编辑页码的明细 id
@@ -2614,12 +2617,6 @@ function pageStatusMeta(st) {
   }
 }
 
-function switchJobTab(tab) {
-  jobTab = tab;
-  document.querySelectorAll('.job-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  renderJobs();
-}
-
 async function loadJobs(silent) {
   const host = document.getElementById('jobList');
   if (!host) return;
@@ -2630,10 +2627,9 @@ async function loadJobs(silent) {
   if (!silent) host.innerHTML = '<div class="job-empty">加载任务清单…</div>';
   try {
     const codeQ = encodeURIComponent(sync.code);
-    const stFilter = jobTab === 'accepted'
-      ? '&status=eq.accepted'
-      : '&status=neq.accepted';
-    const url = `${cfg.url}/rest/v1/vw_scan_jobs?sync_code=eq.${codeQ}${stFilter}`
+    // 只展示未验收任务（排队/执行中/待验收）；已验收的归档后不在此列表显示。
+    // tab 按钮已移除，展示形式保持原样，不再需要切换状态视图。
+    const url = `${cfg.url}/rest/v1/vw_scan_jobs?sync_code=eq.${codeQ}&status=neq.accepted`
       + `&select=id,job_no,book_id,status,total_pages,done_pages,failed_pages,words_found,created_at,finished_at,accepted_at,error_msg`
       + `&order=created_at.desc&limit=60`;
     const r = await fetchWithRetry(url, { headers: SYNC_HEADERS() }, { timeout: 20000, retries: 1, label: '加载任务清单' });
@@ -2668,7 +2664,7 @@ function renderJobs() {
   const host = document.getElementById('jobList');
   if (!host) return;
   if (!jobRows.length) {
-    host.innerHTML = `<div class="job-empty">${jobTab === 'accepted' ? '还没有已验收的任务' : '还没有任务。到「扫描」页选图提交后，任务会在这里显示。'}</div>`;
+    host.innerHTML = '<div class="job-empty">还没有任务。到「扫描」页选图提交后，任务会在这里显示。</div>';
     return;
   }
   host.innerHTML = jobRows.map(j => {
