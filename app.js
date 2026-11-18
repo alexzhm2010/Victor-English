@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.21.3', date: '2026-11-18', items: [
+    '词库释义方案改进：核心释义与义项释义智能合并为一条，统一以右侧灰字展示，彻底去掉词头后的紫色核心释义标签',
+    '合并规则：内容相同或互相包含取更完整者，两个不同义项则合并保留；展开词卡仍可看完整义项',
+  ]},
   { v: '2.21.2', date: '2026-11-18', items: [
     '词库释义智能去重：词头后紫色核心释义与右侧灰色释义内容重复（相同或包含）时，不再重复显示右侧，词库行更清爽',
     '仅前端显示逻辑改动，数据库与识别规则不变，去重后可展开词卡查看完整义项',
@@ -2302,19 +2306,25 @@ function wordCardHtml(w, i) {
       ${engDef}${items}</div>`;
   }).join('');
 
-  const level = w.level_tag ? `<span class="level">${esc(w.level_tag)}</span>` : '';
-  // v2.21.2 释义去重：右侧灰色释义与紫色核心释义(level_tag)重复时不再显示。
-  // 归一化剥离词性/[C][U]/标点空白，只比中英文数字，避免格式差异干扰判断。
+  // v2.21.3 释义智能合并：核心释义(level_tag)与义项释义合并为一条，统一在右侧灰字展示，
+  // 词头后不再显示紫色核心释义标签。归一化剥离词性/[C][U]/标点空白，只比中英文数字。
   const normDef = s => String(s || '').toLowerCase()
     .replace(/\[[^\]]*\]/g, '')
     .replace(/(?:n|v|vt|vi|adj|adv|prep|conj|pron|art|aux|int|abbr|phr)\.?\s*/gi, '')
     .replace(/[\s；;，,。:：/（）()\[\]「」·&…]/g, '');
-  const coreText = normDef(w.level_tag);
-  const sideRaw = w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '';
-  const sideText = normDef(sideRaw);
-  const isDupDef = coreText.length >= 2 && sideText.length >= 2 &&
-    (coreText === sideText || coreText.includes(sideText) || sideText.includes(coreText));
-  const wordDefHtml = (!sideRaw || isDupDef) ? '' : `<span class="word-def">${esc(sideRaw)}</span>`;
+  const coreRaw = (w.level_tag || '').trim();
+  const sideRaw = (w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '').trim();
+  const coreText = normDef(coreRaw), sideText = normDef(sideRaw);
+  let mergedDef = '';
+  if (coreRaw && sideRaw) {
+    if (coreText === sideText) mergedDef = coreRaw.length >= sideRaw.length ? coreRaw : sideRaw; // 相同：取更完整
+    else if (coreText.includes(sideText)) mergedDef = coreRaw;   // 核心含义项：取核心
+    else if (sideText.includes(coreText)) mergedDef = sideRaw;   // 义项含核心：取义项
+    else mergedDef = coreRaw + '；' + sideRaw;                    // 两个不同义项：合并保留
+  } else {
+    mergedDef = coreRaw || sideRaw;
+  }
+  const wordDefHtml = mergedDef ? `<span class="word-def">${esc(mergedDef)}</span>` : '';
   const page = w.page_no ? `<span style="font-size:11px;color:var(--muted)">P${w.page_no}</span>` : '';
   const partialTag = w.partial ? '<span class="partial-tag" title="页尾被截断，扫描下一页会自动补全">待补全</span>' : '';
   // 身份符号徽标
@@ -2374,7 +2384,7 @@ function wordCardHtml(w, i) {
           <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           <span class="word-name">${esc(w.headword)}</span>
           <span class="word-ph">${esc(w.phonetic || '')}</span>
-          ${studyTags}${identityTag}${derivedTag}${level}${page}${partialTag}
+          ${studyTags}${identityTag}${derivedTag}${page}${partialTag}
           ${wordDefHtml}
         </div>
       </div>
