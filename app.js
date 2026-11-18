@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.21.2', date: '2026-11-18', items: [
+    '词库释义智能去重：词头后紫色核心释义与右侧灰色释义内容重复（相同或包含）时，不再重复显示右侧，词库行更清爽',
+    '仅前端显示逻辑改动，数据库与识别规则不变，去重后可展开词卡查看完整义项',
+  ]},
   { v: '2.21.1', date: '2026-11-18', items: [
     '修复词头带箭头/加号：如「▶ composer」「+compose」的派生/增补符号残留词头，现统一剥离到身份标签，词头恢复纯单词',
     '身份标签归一：cautiously(▶→派生)、及p78一组误认成实心圆●的词归位到增补⊕，前端标注更准确',
@@ -2299,6 +2303,18 @@ function wordCardHtml(w, i) {
   }).join('');
 
   const level = w.level_tag ? `<span class="level">${esc(w.level_tag)}</span>` : '';
+  // v2.21.2 释义去重：右侧灰色释义与紫色核心释义(level_tag)重复时不再显示。
+  // 归一化剥离词性/[C][U]/标点空白，只比中英文数字，避免格式差异干扰判断。
+  const normDef = s => String(s || '').toLowerCase()
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/(?:n|v|vt|vi|adj|adv|prep|conj|pron|art|aux|int|abbr|phr)\.?\s*/gi, '')
+    .replace(/[\s；;，,。:：/（）()\[\]「」·&…]/g, '');
+  const coreText = normDef(w.level_tag);
+  const sideRaw = w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '';
+  const sideText = normDef(sideRaw);
+  const isDupDef = coreText.length >= 2 && sideText.length >= 2 &&
+    (coreText === sideText || coreText.includes(sideText) || sideText.includes(coreText));
+  const wordDefHtml = (!sideRaw || isDupDef) ? '' : `<span class="word-def">${esc(sideRaw)}</span>`;
   const page = w.page_no ? `<span style="font-size:11px;color:var(--muted)">P${w.page_no}</span>` : '';
   const partialTag = w.partial ? '<span class="partial-tag" title="页尾被截断，扫描下一页会自动补全">待补全</span>' : '';
   // 身份符号徽标
@@ -2359,7 +2375,7 @@ function wordCardHtml(w, i) {
           <span class="word-name">${esc(w.headword)}</span>
           <span class="word-ph">${esc(w.phonetic || '')}</span>
           ${studyTags}${identityTag}${derivedTag}${level}${page}${partialTag}
-          <span class="word-def">${esc(w.inline_def || (w.senses && w.senses[0] && (w.senses[0].chinese_def || w.senses[0].def)) || '')}</span>
+          ${wordDefHtml}
         </div>
       </div>
       <div class="word-actions">
