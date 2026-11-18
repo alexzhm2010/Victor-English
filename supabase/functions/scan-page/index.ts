@@ -36,6 +36,9 @@ const SYSTEM_PROMPT = `你是英语词典单页结构化解析引擎。识别图
     例：brush 词条下 n. 刷子 / v. 刷、擦 / vi. 擦过，是同一个 brush 的三个词性，不是一个叫 "v" 的词。
   · 身份符号 * ⊕ ⊖ 不是词头的一部分：headword 只写纯英文/中文词（如 animation，不是 *animation），
     符号写进该词的 identity_tag 字段。
+  · 【铁律补充】以上栏目名、词性缩写、身份符号统统不能列进 checkList，也不能作为 word 的 headword。
+    checkList 只允许列入要背的英语/中文词条本身。把"高考链接①""v""辨""*"列进 checkList 或建成词 = 严重错误。
+    高考链接框必须挂在它紧挨着的那一个词条的 notes 里（note_type="高考链接"），不是独立词。
 
 【词头行 → word 字段】
 词头行可能以这些"身份符号"开头（务必辨认，圆内细节关键）：
@@ -447,6 +450,49 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
       w.headword = hw;
     }
 
+    // ---- v2.20 非法词头硬兜底：栏目/词性标记绝不建成独立词（不依赖 AI 听话）----
+    // 豆包偶尔把"高考链接①""v""辨"当成词头点名并建 word。写库前统一归位：
+    //   · 词性标记（v/vt/vi/n/adj/adv/...，精确词表，绝不含 art）：义项并入相邻主词 senses
+    //   · 栏目标签（高考链接/辨/同/反/注/派...）：整块作为 note 并入目标词 notes
+    // 目标词定位：栏目标签优先按题干括号提示词（如 (combine)→combine），其次用 checkList 相邻词。
+    const rawCheckList: string[] = Array.isArray(parsed.checkList)
+      ? parsed.checkList.map((x: any) => String(x).trim()).filter(Boolean)
+      : checkList;
+    const POS_ONLY = /^(v|vt|vi|n|adj|adv|prep|conj|pron|interj|aux)\.?$/i;
+    const LABEL_HEAD = /^(高考链接|辨|同|反|注|派|句型|常用词块|用法点拨|词块)/;
+    const isIllegalHead = (h: string) => POS_ONLY.test(String(h || "").trim()) || LABEL_HEAD.test(String(h || "").trim());
+    const findWord = (head: string) => words.find(x => !isIllegalHead(x.headword) && normHead(x.headword) === normHead(head)) || null;
+    const rescuedHeads: string[] = [];
+    for (let i = words.length - 1; i >= 0; i--) {
+      const w = words[i];
+      if (!isIllegalHead(w.headword)) continue;
+      const hw = String(w.headword).trim();
+      const idx = rawCheckList.findIndex(c => normHead(c) === normHead(hw));
+      let target: Word | null = null;
+      if (POS_ONLY.test(hw)) {
+        // 词性标记：并入 checkList 中紧邻的前一个主词（词性分节是上一词的延续）
+        for (let j = idx - 1; j >= 0 && !target; j--) {
+          if (!isIllegalHead(rawCheckList[j])) target = findWord(rawCheckList[j]);
+        }
+        if (!target) for (let j = idx + 1; j < rawCheckList.length && !target; j++) {
+          if (!isIllegalHead(rawCheckList[j])) target = findWord(rawCheckList[j]);
+        }
+        if (target) { target.senses = [...(target.senses || []), ...(w.senses || [])]; rescuedHeads.push(`${hw}→${target.headword}(义项)`); }
+      } else {
+        // 栏目标签：优先题干括号提示词定位，否则用相邻主词
+        const content = (w.notes || []).map(n => n.content || "").join(" ");
+        const hint = (content.match(/\(([A-Za-z][A-Za-z\-']{1,})\)/) || [])[1];
+        if (hint) target = findWord(hint);
+        if (!target) for (const j of [idx - 1, idx + 1]) {
+          if (j >= 0 && j < rawCheckList.length && !target && !isIllegalHead(rawCheckList[j])) target = findWord(rawCheckList[j]);
+        }
+        if (target) { target.notes = [...(target.notes || []), ...(w.notes || [])]; rescuedHeads.push(`${hw}→${target.headword}(note)`); }
+      }
+      if (!target) rescuedHeads.push(`${hw}→丢弃(无主词)`);
+      words.splice(i, 1); // 无论归位成功与否，非法词头都不写库
+    }
+    if (rescuedHeads.length) console.log(`非法词头归位: ${rescuedHeads.join(", ")}`);
+
     const boundary: Boundary = parsed.boundary || {};
     // 页码来源：detect 阶段已从图片识别并落库，scan 阶段沿用该页码，保证词表与页码表一致。
     // parsed.page_no 是本次 scan 的 AI 复核值，仅作兜底（detect 页码缺失时）。
@@ -798,7 +844,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.17.0",
+      engine_version: "v2.20.0",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,

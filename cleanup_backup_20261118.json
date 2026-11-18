@@ -1,0 +1,402 @@
+{
+  "backup_at": "2026-11-18T11:39:05.172370",
+  "reason": "清理非法词头 v/高考链接①/高考链接③（v2.20.0）",
+  "records": {
+    "1386": {
+      "id": 1386,
+      "headword": "v",
+      "page_no": 82,
+      "batch_id": 105,
+      "vw_senses": [
+        {
+          "id": 2198,
+          "pos": "vt & vi.",
+          "sense_no": 1,
+          "sense_freq": 1,
+          "chinese_def": "（向……）收费；开价",
+          "english_def": null,
+          "usage_label": null,
+          "vw_examples": [
+            {
+              "en": "charge (sb / sth) for sth",
+              "id": 3684,
+              "zh": "（向某人/某物）收费",
+              "kind": "phrase",
+              "gloss": null,
+              "source": null,
+              "parent_phrase": null
+            },
+            {
+              "en": "We won't charge you for delivery.",
+              "id": 3685,
+              "zh": "我们免费送货。",
+              "kind": "sentence",
+              "gloss": null,
+              "source": null,
+              "parent_phrase": "charge (sb / sth) for sth"
+            }
+          ],
+          "countability": null
+        }
+      ],
+      "vw_notes": []
+    },
+    "1579": {
+      "id": 1579,
+      "headword": "高考链接③",
+      "page_no": 93,
+      "batch_id": 116,
+      "vw_senses": [],
+      "vw_notes": [
+        {
+          "id": 322,
+          "title": "③",
+          "content": "1. Technological innovation, ______ (combine) with good marketing, will promote the sales of these products. (2020 江苏改) 2. — In this day and age, women can have children and jobs as well. — I can't agree more. It's great to have the two ______ (combine). (2010 福建改)",
+          "note_type": "高考链接"
+        }
+      ]
+    },
+    "1585": {
+      "id": 1585,
+      "headword": "高考链接①",
+      "page_no": 93,
+      "batch_id": 116,
+      "vw_senses": [],
+      "vw_notes": [
+        {
+          "id": 323,
+          "title": "①",
+          "content": "With new technology, pictures of underwater valleys can be taken ______ colour. (2011 北京政)",
+          "note_type": "高考链接"
+        }
+      ]
+    },
+    "target_charge": [
+      {
+        "id": 1387,
+        "headword": "charge",
+        "page_no": 82,
+        "batch_id": 105,
+        "vw_senses": [
+          {
+            "id": 2202,
+            "pos": "n.",
+            "sense_no": 4,
+            "sense_freq": 1,
+            "chinese_def": "电荷；电量",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "on charge",
+                "id": 3699,
+                "zh": "充电中",
+                "kind": "phrase",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "positive / negative charge",
+                "id": 3700,
+                "zh": "正/负电荷",
+                "kind": "phrase",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              }
+            ],
+            "countability": "[C]&[U]"
+          },
+          {
+            "id": 2200,
+            "pos": "n.",
+            "sense_no": 2,
+            "sense_freq": 1,
+            "chinese_def": "费用；价钱",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "an admission charge of $5 五美元的入场费",
+                "id": 3694,
+                "zh": "五美元的入场费",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "Delivery is free of charge.",
+                "id": 3695,
+                "zh": "免费送货。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "The monthly charge for this service is only $29.",
+                "id": 3696,
+                "zh": "这项服务的收费每月仅为29美元。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "2012全国",
+                "parent_phrase": null
+              }
+            ],
+            "countability": "[C]&[U]"
+          },
+          {
+            "id": 2199,
+            "pos": "n.",
+            "sense_no": 1,
+            "sense_freq": 1,
+            "chinese_def": "主管；负责",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "in charge (of sth)",
+                "id": 3686,
+                "zh": "负责（某事）",
+                "kind": "phrase",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "I'd like to speak to the person in charge.",
+                "id": 3687,
+                "zh": "我想跟负责人谈谈。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": "in charge (of sth)"
+              },
+              {
+                "en": "Could I speak to whoever is in charge of International Sales please?",
+                "id": 3688,
+                "zh": "我能同国际销售部的负责人谈谈吗？",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "2009全国",
+                "parent_phrase": "in charge (of sth)"
+              },
+              {
+                "en": "in / under sb's charge",
+                "id": 3689,
+                "zh": "由某人负责",
+                "kind": "phrase",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "The files were left in your charge.",
+                "id": 3690,
+                "zh": "这些文件由你负责处理。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": "in / under sb's charge"
+              },
+              {
+                "en": "take charge of",
+                "id": 3691,
+                "zh": "负责；掌管",
+                "kind": "phrase",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "Do you know if Linda is willing to take charge of the program?",
+                "id": 3692,
+                "zh": "你知道琳达是否愿意负责这个项目吗？",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "2010安徽",
+                "parent_phrase": "take charge of"
+              },
+              {
+                "en": "To become a successful person, we must be able to take charge of ourselves.",
+                "id": 3693,
+                "zh": "要成为一个成功的人，我们必须能够掌控自己。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "北师大新必修③-7",
+                "parent_phrase": "take charge of"
+              }
+            ],
+            "countability": "[U]"
+          },
+          {
+            "id": 2201,
+            "pos": "n.",
+            "sense_no": 3,
+            "sense_freq": 1,
+            "chinese_def": "指控；罪名",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "She was arrested on the charge of theft.",
+                "id": 3697,
+                "zh": "她因被指控偷盗而被捕。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "Police dropped the charges against him because of insufficient evidence.",
+                "id": 3698,
+                "zh": "由于证据不足，警方放弃了对他的起诉。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              }
+            ],
+            "countability": "[C]"
+          }
+        ],
+        "vw_notes": []
+      }
+    ],
+    "target_combine": [
+      {
+        "id": 1580,
+        "headword": "combine",
+        "page_no": 93,
+        "batch_id": 116,
+        "vw_senses": [
+          {
+            "id": 2490,
+            "pos": "vt.",
+            "sense_no": 3,
+            "sense_freq": 1,
+            "chinese_def": "兼备；兼顾",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "The hotel combines comfort and convenience.",
+                "id": 4081,
+                "zh": "这家宾馆既舒适又方便。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "Like her mother Marie Curie, Irene combined family and career.",
+                "id": 4082,
+                "zh": "像她的母亲居里夫人一样，艾琳也兼顾了家庭与事业。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "2011 陕西改",
+                "parent_phrase": null
+              }
+            ],
+            "countability": null
+          },
+          {
+            "id": 2488,
+            "pos": "vi & vt.",
+            "sense_no": 1,
+            "sense_freq": 1,
+            "chinese_def": "（使）结合；（使）组合",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "Theory must be combined with practice.",
+                "id": 4078,
+                "zh": "理论必须同实践相结合。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "The idea of garden city was to combine the best of town and country in a new kind of settlement.",
+                "id": 4079,
+                "zh": "花园城市的概念就是在一种新的居住形式中把城市和乡村的优点结合起来。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "2011 江西改",
+                "parent_phrase": null
+              }
+            ],
+            "countability": null
+          },
+          {
+            "id": 2489,
+            "pos": "vi & vt.",
+            "sense_no": 2,
+            "sense_freq": 1,
+            "chinese_def": "（使）化合；（使）混合",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "Steel is produced by combining iron with carbon.",
+                "id": 4080,
+                "zh": "钢是把铁加碳混合炼制而成的。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              }
+            ],
+            "countability": null
+          }
+        ],
+        "vw_notes": []
+      }
+    ],
+    "target_colo_u_rful": [
+      {
+        "id": 1584,
+        "headword": "colo(u)rful",
+        "page_no": 93,
+        "batch_id": 116,
+        "vw_senses": [
+          {
+            "id": 2498,
+            "pos": "adj.",
+            "sense_no": 0,
+            "sense_freq": 1,
+            "chinese_def": "颜色鲜艳的；丰富多彩的",
+            "english_def": null,
+            "usage_label": null,
+            "vw_examples": [
+              {
+                "en": "a colourful dress",
+                "id": 4091,
+                "zh": "艳丽的连衣裙",
+                "kind": "phrase",
+                "gloss": null,
+                "source": null,
+                "parent_phrase": null
+              },
+              {
+                "en": "My life will be much richer and more colourful.",
+                "id": 4092,
+                "zh": "我的生活将会更加富裕、更加丰富多彩。",
+                "kind": "sentence",
+                "gloss": null,
+                "source": "2014 全国书面表达",
+                "parent_phrase": null
+              }
+            ],
+            "countability": null
+          }
+        ],
+        "vw_notes": []
+      }
+    ]
+  }
+}
