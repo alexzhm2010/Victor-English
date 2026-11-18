@@ -28,9 +28,9 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
-  { v: '2.18.2', date: '2026-11-18', items: [
-    '修复验收后列表：确认验收后任务不再从清单里消失，而是就地变成「已验收」徽章，刷新即时可见',
-    '移除任务清单上方两个状态按钮，全部任务统一展示，进行中/待验收在上、已验收沉底，状态一眼分明',
+  { v: '2.18.3', date: '2026-11-18', items: [
+    '修复验收后页码清单不刷新：点「确认验收」后，下方记录页立即重拉，新页（如 P85）马上出现在页码清单里',
+    '任务清单展示保持原样（已验收仍归档、不干扰进行中任务）',
   ]},
   { v: '2.18.1', date: '2026-11-18', items: [
     '细节修正：跳过的页直接显示跳过原因，不再误显示"等待云端执行"',
@@ -2586,8 +2586,9 @@ let recordRawCache = {};        // batch id -> words[]
 const expandedRecords = new Set();
 
 /* ---- 云端任务执行清单（v2.16）---- */
-let jobRows = [];               // 任务单列表（含进行中/待验收/已验收，统一展示，靠状态徽章区分）
+let jobRows = [];               // 任务单列表
 let jobPages = {};              // job_id -> 明细页数组
+let jobTab = 'active';          // active | accepted
 let jobPollTimer = null;        // 有进行中任务时的轮询定时器
 const expandedJobs = new Set();
 let _jobEditingPage = null;     // 正在编辑页码的明细 id
@@ -2613,6 +2614,12 @@ function pageStatusMeta(st) {
   }
 }
 
+function switchJobTab(tab) {
+  jobTab = tab;
+  document.querySelectorAll('.job-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  renderJobs();
+}
+
 async function loadJobs(silent) {
   const host = document.getElementById('jobList');
   if (!host) return;
@@ -2623,21 +2630,15 @@ async function loadJobs(silent) {
   if (!silent) host.innerHTML = '<div class="job-empty">加载任务清单…</div>';
   try {
     const codeQ = encodeURIComponent(sync.code);
-    // 统一展示全部任务（含已验收），靠卡片上的状态徽章区分；不再用 tab 过滤状态。
-    // 验收后 loadJobs(true) 重拉，刚验收的任务会从"待验收"就地变成"已验收"，不会凭空消失。
-    const url = `${cfg.url}/rest/v1/vw_scan_jobs?sync_code=eq.${codeQ}`
+    const stFilter = jobTab === 'accepted'
+      ? '&status=eq.accepted'
+      : '&status=neq.accepted';
+    const url = `${cfg.url}/rest/v1/vw_scan_jobs?sync_code=eq.${codeQ}${stFilter}`
       + `&select=id,job_no,book_id,status,total_pages,done_pages,failed_pages,words_found,created_at,finished_at,accepted_at,error_msg`
       + `&order=created_at.desc&limit=60`;
     const r = await fetchWithRetry(url, { headers: SYNC_HEADERS() }, { timeout: 20000, retries: 1, label: '加载任务清单' });
     if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 100));
     jobRows = await r.json();
-    // 已验收沉底、其余按时间倒序：用排序替代原来的两个 tab，进行中/待验收始终在上方
-    jobRows.sort((a, b) => {
-      const aa = a.status === 'accepted' ? 1 : 0;
-      const bb = b.status === 'accepted' ? 1 : 0;
-      if (aa !== bb) return aa - bb;
-      return String(b.created_at || '').localeCompare(String(a.created_at || ''));
-    });
     // 拉每个任务的明细页
     jobPages = {};
     await Promise.all(jobRows.map(async j => {
@@ -2667,7 +2668,7 @@ function renderJobs() {
   const host = document.getElementById('jobList');
   if (!host) return;
   if (!jobRows.length) {
-    host.innerHTML = '<div class="job-empty">还没有任务。到「扫描」页选图提交后，任务会在这里显示。</div>';
+    host.innerHTML = `<div class="job-empty">${jobTab === 'accepted' ? '还没有已验收的任务' : '还没有任务。到「扫描」页选图提交后，任务会在这里显示。'}</div>`;
     return;
   }
   host.innerHTML = jobRows.map(j => {
@@ -2743,7 +2744,10 @@ async function acceptJob(id) {
     }, { timeout: 20000, retries: 1, label: '确认验收' });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) throw new Error(d.error || '验收失败');
-    toast('已验收，任务归档');
+    toast('已验收，页码清单已更新');
+    // 验收后门禁放行：这批页的批次现在应进入下方记录清单，必须重拉记录页，
+    // 否则列表仍是旧的、看不到刚验收的页（如 P85）。同时刷新任务清单。
+    loadRecords();
     loadJobs(true);
   } catch (e) { toast('验收失败：' + e.message); }
 }
