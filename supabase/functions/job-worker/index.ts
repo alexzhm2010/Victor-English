@@ -1,5 +1,7 @@
 // ============================================================
-// Supabase Edge Function: job-worker  (v2.16.0 云端任务队列)
+// Supabase Edge Function: job-worker  (v2.18.0 云端任务队列)
+//   v2.18.0：新增卡死页回收（running 超 6 分钟自动重扫，最多2次）+ 收尾前检查残留 running 页，
+//            修复"进程中途被中断→页永久停在解析中、任务却提前收尾"导致的重复页码显示问题
 // 职责：把「扫描入库」变成云端自动执行的任务，浏览器可随时关闭。
 //   action=create  前端提交：把图片清单落成一个任务单 + 每页明细，状态 queued
 //   action=tick    pg_cron 每分钟唤醒：原子领取一个任务，推进其中一页
@@ -121,6 +123,33 @@ Deno.serve(async (req) => {
         .eq("id", job.id).is("locked_at", null).select("id");
       if (!locked || !locked.length) return json({ ok: true, idle: true, note: "任务已被其它实例领取" });
 
+      // 卡死页回收（v2.18.0）：worker 进程若在解析中途被平台中断（冷启动/超时/重启），
+      // 该页会永远停在 running——软锁回收只释放任务锁，不会重置页状态，于是前端永久"解析中"。
+      // 这里把 running 且 started_at 超过 6 分钟的页复位为 pending 自动重扫（幂等安全），
+      // 并用 error_msg 里的 STALE 标记限制最多回收 2 次，避免问题页无限循环。
+      const STALE_MS = 6 * 60 * 1000;
+      const { data: stalePages } = await supa.from("vw_scan_job_pages")
+        .select("id,error_msg,started_at")
+        .eq("status", "running")
+        .lt("started_at", new Date(now - STALE_MS).toISOString())
+        .limit(20);
+      for (const sp of (stalePages || [])) {
+        const m = /STALE-RECOVER:(\d+)/.exec(String(sp.error_msg || ""));
+        const times = m ? parseInt(m[1], 10) : 0;
+        if (times >= 2) {
+          // 已回收两次仍卡死：标为 error，交人工处理，不再自动重扫
+          await supa.from("vw_scan_job_pages").update({
+            status: "error", finished_at: new Date().toISOString(),
+            error_msg: "解析多次中断，已停止自动重试，请点重试或删除该页",
+          }).eq("id", sp.id);
+        } else {
+          await supa.from("vw_scan_job_pages").update({
+            status: "pending", started_at: null,
+            error_msg: `STALE-RECOVER:${times + 1} 进程中断，已自动重扫`,
+          }).eq("id", sp.id);
+        }
+      }
+
       let page: any = null;
       try {
         // 取本任务下一页 pending（按 seq）；若无则检查是否所有页都已终态 → done
@@ -130,7 +159,16 @@ Deno.serve(async (req) => {
           .order("seq", { ascending: true }).limit(1);
 
         if (!pend || !pend.length) {
-          // 无待处理页：统计终态，收尾任务
+          // 无 pending 页：先看是否仍有 running 页（可能是别的实例在处理，或未超时的卡死页）
+          const { data: allPre } = await supa.from("vw_scan_job_pages")
+            .select("status").eq("job_id", job.id);
+          const stillRunning = (allPre || []).filter(p => p.status === "running").length;
+          if (stillRunning > 0) {
+            // 有页仍在处理中，暂不收尾，下一 tick 再看；回收逻辑会处理超时的卡死页
+            await supa.from("vw_scan_jobs").update({ locked_at: null }).eq("id", job.id);
+            return json({ ok: true, note: "仍有页处理中，暂不收尾", job_id: job.id, stillRunning });
+          }
+          // 全部终态：统计，收尾任务
           const { data: all } = await supa.from("vw_scan_job_pages")
             .select("status,words_found").eq("job_id", job.id);
           const done = (all || []).filter(p => p.status === "done").length;
