@@ -435,19 +435,31 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
       }
     }
 
-    // ---- v2.17 词头归一化兜底：把身份符号从 headword 剥离到 identity_tag ----
+    // ---- 词头归一化兜底：把身份/派生符号从 headword 剥离到 identity_tag ----
     // 提示词要求 * / ⊕ / ⊖ 记入 identity_tag，但豆包偶尔把它们留在 headword 里
-    // （如 "*animation"），导致排序时排到 a 前。这里在写库前统一纠正，无歧义。
-    const LEAD_MARKS: Record<string, string> = { "*": "*", "⊕": "⊕", "⊖": "⊖" };
+    // （如 "*animation"、"▶ composer"、"+compose"），导致排序时排到字母前、
+    // 或词卡词头带一个箭头/加号。这里在写库前统一纠正，无歧义。
+    // v2.21.1：补 ▶/▼（派生引导符）与 +（加号，增补词印刷变体）。
+    const LEAD_MARKS: Record<string, string> = {
+      "*": "*", "⊕": "⊕", "⊖": "⊖",
+      "▶": "derived", "▼": "derived", "+": "⊕",
+    };
+    // AI 偶发把非标准符号写进 identity_tag 本身，归一到合法值（前端仅认合法值）
+    const NORM_IDENTITY: Record<string, string> = {
+      "▶": "derived", "▼": "derived", "+": "⊕", "●": "⊕",
+    };
     for (const w of words) {
       let hw = String(w.headword || "").trim();
       while (hw.length) {
         const m = LEAD_MARKS[hw.charAt(0)];
         if (!m) break;
-        w.identity_tag = m;                 // 星号等身份符号归位到标签
+        w.identity_tag = m;                 // 符号归位到标签（词头印刷符号优先）
         hw = hw.slice(1).trim();
       }
       w.headword = hw;
+      if (w.identity_tag && NORM_IDENTITY[w.identity_tag]) {
+        w.identity_tag = NORM_IDENTITY[w.identity_tag];
+      }
     }
 
     // ---- v2.20 非法词头硬兜底：栏目/词性标记绝不建成独立词（不依赖 AI 听话）----
@@ -870,7 +882,7 @@ ${orphanHeads.map(h => `- ${h}`).join("\n")}
 
     return json({
       ok: true,
-      engine_version: "v2.21.0",
+      engine_version: "v2.21.1",
       page_no: thisPage,
       detected_page_no: detectedPage,
       header_word: parsed.header_word || null,
