@@ -28,6 +28,10 @@ function isSuper() { return !!(sync && (sync.code === SUPER_CODE || sync.isSuper
  * 最新一条放在数组最前面，首页会显示其版本号 + 更新要点。
  * ============================================================ */
 const CHANGELOG = [
+  { v: '2.23.0', date: '2026-11-21', items: [
+    '登录体验：修复每次刷新都弹出同步码输入框的问题——同步码其实早已记住，是门禁遮罩默认显示却没在已登录时关闭，现已自动关闭，真正做到登录一次长期免输',
+    '消除浏览器「是否保存密码」骚扰：设置页 Supabase 公钥输入框由密码框改为普通文本框（公钥本就公开，无需打码），页面已无任何密码框',
+  ]},
   { v: '2.22.0', date: '2026-11-18', items: [
     '修根因（写库层）：词性归一化只去末尾句点，导致重扫时 vt. & vi. 与 vt & vi 在写库层无法归组、生成重复义项（accelerate/accept 的真正源头），现写库归一化去全部句点+压缩空格，与前端一致，从源头杜绝重复义项入库',
     '增强健壮性：派生词多级嵌套且子词词序在母词前时，写入后统一二次回填 parent_word_id（只补空不覆盖），杜绝派生关系漏挂',
@@ -3140,7 +3144,9 @@ function resetRecordFilter() {
   initAzIndex();
 
   if (sync) {
-    // 已有同步码：应用门禁并直接加载
+    // 已有同步码：先关掉 HTML 里默认 show 的门禁遮罩，避免每次刷新都弹输入框
+    // （同步码早已记在 localStorage，这里只补上"遮罩关闭"这一步）
+    document.getElementById('syncGate').classList.remove('show');
     applyGating();
     await refreshWords();
     if (isSuper()) loadSyncCodeList();
